@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
-import { Sparkles, FileText, CheckCircle, Loader2, Zap } from "lucide-react";
+import { Sparkles, FileText, CheckCircle, Loader2, Zap, Download } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -66,6 +66,22 @@ export default function Generate() {
       });
     },
   });
+
+  const downloadContract = () => {
+    const blob = new Blob([generatedContent], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${contractTitle || 'contract'}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    toast({
+      title: "Contract downloaded",
+      description: "Your contract has been downloaded successfully.",
+    });
+  };
 
   const steps = [
     { id: "proposal", label: "Business Proposal", icon: Sparkles },
@@ -239,13 +255,23 @@ export default function Generate() {
               >
                 Generate Another
               </Button>
-              <Button
-                onClick={() => setLocation("/contracts")}
-                data-testid="button-view-contracts"
-              >
-                <FileText className="h-4 w-4 mr-2" />
-                View All Contracts
-              </Button>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  onClick={downloadContract}
+                  data-testid="button-download-contract"
+                >
+                  <Download className="h-4 w-4 mr-2" />
+                  Download
+                </Button>
+                <Button
+                  onClick={() => setLocation("/contracts")}
+                  data-testid="button-view-contracts"
+                >
+                  <FileText className="h-4 w-4 mr-2" />
+                  View All Contracts
+                </Button>
+              </div>
             </div>
           </CardContent>
         </Card>
