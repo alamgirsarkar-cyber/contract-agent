@@ -20,11 +20,29 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useToast } from "@/hooks/use-toast";
 import type { Contract } from "@shared/schema";
 
 export default function Contracts() {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const { toast } = useToast();
+
+  const downloadContract = (contract: Contract) => {
+    const blob = new Blob([contract.content], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${contract.title || 'contract'}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    toast({
+      title: "Contract downloaded",
+      description: `${contract.title} has been downloaded successfully.`,
+    });
+  };
 
   const { data: contracts, isLoading } = useQuery<Contract[]>({
     queryKey: ["/api/contracts"],
@@ -163,7 +181,9 @@ export default function Contracts() {
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
                       <DropdownMenuItem>View Details</DropdownMenuItem>
-                      <DropdownMenuItem>Download</DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => downloadContract(contract)}>
+                        Download
+                      </DropdownMenuItem>
                       <DropdownMenuItem>Validate</DropdownMenuItem>
                       <DropdownMenuItem className="text-destructive">Delete</DropdownMenuItem>
                     </DropdownMenuContent>
