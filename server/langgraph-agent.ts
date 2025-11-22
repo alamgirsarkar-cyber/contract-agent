@@ -1,21 +1,49 @@
 import { StateGraph, END, START, Annotation } from "@langchain/langgraph";
-import { ChatOpenAI } from "@langchain/openai";
-import { OpenAIEmbeddings } from "@langchain/openai";
+import { ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings } from "@langchain/google-genai";
+import { ChatOllama, OllamaEmbeddings } from "@langchain/ollama";
 import { storage } from "./storage";
 import { searchTemplatesByEmbedding, checkSupabaseAvailability } from "./supabase";
 
-const openaiApiKey = process.env.OPENAI_API_KEY || "";
+// Configuration: Switch between "ollama" and "gemini"
+const LLM_PROVIDER = process.env.LLM_PROVIDER || "ollama";
 
-const llm = new ChatOpenAI({
-  modelName: "gpt-4o",
-  temperature: 0.7,
-  openAIApiKey: openaiApiKey,
-});
+// Initialize models based on provider
+let llm: ChatGoogleGenerativeAI | ChatOllama;
+let embeddings: GoogleGenerativeAIEmbeddings | OllamaEmbeddings;
 
-const embeddings = new OpenAIEmbeddings({
-  modelName: "text-embedding-3-small",
-  openAIApiKey: openaiApiKey,
-});
+if (LLM_PROVIDER === "ollama") {
+  console.log("🦙 Using Ollama (Local LLM) - Completely Free!");
+  const ollamaBaseUrl = process.env.OLLAMA_BASE_URL || "http://localhost:11434";
+  const ollamaModel = process.env.OLLAMA_MODEL || "llama3.1:8b";
+  const ollamaEmbeddingModel = process.env.OLLAMA_EMBEDDING_MODEL || "nomic-embed-text";
+
+  llm = new ChatOllama({
+    baseUrl: ollamaBaseUrl,
+    model: ollamaModel,
+    temperature: 0.7,
+  });
+
+  embeddings = new OllamaEmbeddings({
+    baseUrl: ollamaBaseUrl,
+    model: ollamaEmbeddingModel,
+  });
+} else if (LLM_PROVIDER === "gemini") {
+  console.log("🌟 Using Google Gemini");
+  const geminiApiKey = process.env.GEMINI_API_KEY || "";
+
+  llm = new ChatGoogleGenerativeAI({
+    model: "gemini-pro",
+    temperature: 0.7,
+    apiKey: geminiApiKey,
+  });
+
+  embeddings = new GoogleGenerativeAIEmbeddings({
+    model: "embedding-001",
+    apiKey: geminiApiKey,
+  });
+} else {
+  throw new Error(`Unknown LLM_PROVIDER: ${LLM_PROVIDER}. Use "ollama" or "gemini"`);
+}
 
 const ContractGenerationState = Annotation.Root({
   proposal: Annotation<string>(),
@@ -322,11 +350,12 @@ Respond with a JSON object in this format:
   ]
 }`;
 
-    const response = await llm.invoke(prompt, {
-      response_format: { type: "json_object" },
-    });
+    const response = await llm.invoke(prompt + "\n\nProvide your response as valid JSON only, with no additional text.");
 
-    const validationResult = JSON.parse(response.content.toString());
+    const responseText = response.content.toString();
+    // Extract JSON from response (Gemini sometimes wraps it in markdown)
+    const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+    const validationResult = jsonMatch ? JSON.parse(jsonMatch[0]) : JSON.parse(responseText);
 
     const newStatus = validationResult.status === "compliant" ? "validated" :
                       validationResult.status === "issues_found" ? "pending" : "draft";

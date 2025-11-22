@@ -1,3 +1,4 @@
+import "dotenv/config";
 import { type Server } from "node:http";
 
 import express, {
