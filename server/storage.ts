@@ -333,5 +333,7 @@ export class SupabaseStorage implements IStorage {
   }
 }
 
-// Use Supabase storage for templates
-export const storage = new SupabaseStorage();
+// Temporarily use memory storage while fixing Supabase schema
+export const storage = new MemStorage();
+// TODO: Switch to SupabaseStorage after fixing Supabase table schema
+// export const storage = new SupabaseStorage();
