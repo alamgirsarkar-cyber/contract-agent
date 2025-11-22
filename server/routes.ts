@@ -1,9 +1,37 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
+import multer from "multer";
 import { storage } from "./storage";
 import { insertContractSchema, insertTemplateSchema } from "@shared/schema";
 import { contractGenerationWorkflow, validationWorkflow, generateEmbedding } from "./langgraph-agent";
 import { storeTemplateEmbedding } from "./supabase";
+import { parseFile } from "./file-parser";
+
+// Configure multer for file uploads (in-memory storage)
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 10 * 1024 * 1024, // 10MB limit
+  },
+  fileFilter: (_req, file, cb) => {
+    const allowedMimeTypes = [
+      "application/pdf",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "text/plain",
+    ];
+    const allowedExtensions = [".pdf", ".docx", ".txt"];
+    const hasValidMimeType = allowedMimeTypes.includes(file.mimetype);
+    const hasValidExtension = allowedExtensions.some((ext) =>
+      file.originalname.toLowerCase().endsWith(ext)
+    );
+
+    if (hasValidMimeType || hasValidExtension) {
+      cb(null, true);
+    } else {
+      cb(new Error("Only PDF, DOCX, and TXT files are allowed"));
+    }
+  },
+});
 
 export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/contracts", async (_req, res) => {
@@ -162,6 +190,63 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // File upload endpoint for templates
+  app.post("/api/templates/upload", upload.single("file"), async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ error: "No file uploaded" });
+      }
+
+      const { title, category, description } = req.body;
+
+      if (!title || !category) {
+        return res.status(400).json({ error: "Missing required fields: title, category" });
+      }
+
+      // Parse the uploaded file
+      const parseResult = await parseFile(
+        req.file.buffer,
+        req.file.mimetype,
+        req.file.originalname
+      );
+
+      if (parseResult.error || !parseResult.content) {
+        return res.status(400).json({ error: parseResult.error || "Failed to extract content from file" });
+      }
+
+      // Create template with parsed content
+      const validatedData = insertTemplateSchema.parse({
+        title,
+        category,
+        description: description || "",
+        content: parseResult.content,
+      });
+
+      const template = await storage.createTemplate(validatedData);
+      console.log(`Template ${template.id} created from file: ${template.title}`);
+
+      // Generate and store embedding
+      try {
+        const embedding = await generateEmbedding(parseResult.content);
+        const storeResult = await storeTemplateEmbedding(template.id, parseResult.content, embedding);
+
+        if (storeResult.success) {
+          console.log(`Template ${template.id} embedded and stored in Supabase vector database`);
+        } else {
+          console.warn(`Template ${template.id} created but embedding storage failed: ${storeResult.error}`);
+        }
+      } catch (embeddingError) {
+        console.error("Failed to generate/store embedding:", embeddingError);
+      }
+
+      res.status(201).json(template);
+    } catch (error) {
+      console.error("POST /api/templates/upload error:", error);
+      res.status(400).json({ error: error instanceof Error ? error.message : "Invalid data" });
+    }
+  });
+
+  // Manual text input endpoint for templates
   app.post("/api/templates", async (req, res) => {
     try {
       const validatedData = insertTemplateSchema.parse(req.body);
@@ -172,7 +257,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       try {
         const embedding = await generateEmbedding(validatedData.content);
         const storeResult = await storeTemplateEmbedding(template.id, validatedData.content, embedding);
-        
+
         if (storeResult.success) {
           console.log(`Template ${template.id} embedded and stored in Supabase vector database`);
         } else {
@@ -196,6 +281,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("GET /api/validations error:", error);
       res.status(500).json({ error: "Failed to fetch validations" });
+    }
+  });
+
+  // LLM Provider Configuration
+  app.get("/api/settings/llm-provider", async (_req, res) => {
+    try {
+      const currentProvider = process.env.LLM_PROVIDER || "ollama";
+      res.json({
+        provider: currentProvider,
+        availableProviders: ["ollama", "gemini"],
+        providerInfo: {
+          ollama: {
+            name: "Ollama",
+            description: "Free, local LLM - No API key required",
+            models: {
+              llm: process.env.OLLAMA_MODEL || "llama3.1:8b",
+              embedding: process.env.OLLAMA_EMBEDDING_MODEL || "nomic-embed-text"
+            }
+          },
+          gemini: {
+            name: "Google Gemini",
+            description: "Free cloud API with quota limits",
+            models: {
+              llm: "gemini-pro",
+              embedding: "embedding-001"
+            }
+          }
+        }
+      });
+    } catch (error) {
+      console.error("GET /api/settings/llm-provider error:", error);
+      res.status(500).json({ error: "Failed to fetch LLM provider settings" });
     }
   });
 

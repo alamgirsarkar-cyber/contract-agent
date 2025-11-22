@@ -21,7 +21,13 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Files, Upload, Search, Plus } from "lucide-react";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@/components/ui/tabs";
+import { Files, Upload, Search, Plus, FileText } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { useForm } from "react-hook-form";
@@ -41,6 +47,8 @@ export default function Templates() {
   const [searchQuery, setSearchQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [uploadMode, setUploadMode] = useState<"file" | "manual">("file");
   const { toast } = useToast();
 
   const { data: templates, isLoading } = useQuery<Template[]>({
@@ -57,6 +65,13 @@ export default function Templates() {
     },
   });
 
+  // File upload state
+  const [fileUploadData, setFileUploadData] = useState({
+    title: "",
+    category: "other",
+    description: "",
+  });
+
   const uploadMutation = useMutation({
     mutationFn: async (data: InsertTemplate) => {
       return await apiRequest("POST", "/api/templates", data);
@@ -69,6 +84,41 @@ export default function Templates() {
       });
       setIsDialogOpen(false);
       form.reset();
+      setSelectedFile(null);
+      setFileUploadData({ title: "", category: "other", description: "" });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Upload failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const fileUploadMutation = useMutation({
+    mutationFn: async (formData: FormData) => {
+      const response = await fetch("/api/templates/upload", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to upload template");
+      }
+
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/templates"] });
+      toast({
+        title: "Template uploaded",
+        description: "Your template file has been uploaded and indexed successfully.",
+      });
+      setIsDialogOpen(false);
+      setSelectedFile(null);
+      setFileUploadData({ title: "", category: "other", description: "" });
     },
     onError: (error: Error) => {
       toast({
@@ -90,6 +140,43 @@ export default function Templates() {
     uploadMutation.mutate(data);
   };
 
+  const handleFileUpload = (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!selectedFile) {
+      toast({
+        title: "No file selected",
+        description: "Please select a file to upload",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!fileUploadData.title || !fileUploadData.category) {
+      toast({
+        title: "Missing information",
+        description: "Please provide a title and category",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append("file", selectedFile);
+    formData.append("title", fileUploadData.title);
+    formData.append("category", fileUploadData.category);
+    formData.append("description", fileUploadData.description);
+
+    fileUploadMutation.mutate(formData);
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setSelectedFile(file);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-4">
@@ -106,111 +193,213 @@ export default function Templates() {
               Upload Template
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-w-2xl">
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Upload New Template</DialogTitle>
               <DialogDescription>
                 Add a new legal template to the library for AI-powered contract generation
               </DialogDescription>
             </DialogHeader>
-            <Form {...form}>
-              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-                <FormField
-                  control={form.control}
-                  name="title"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Template Title</FormLabel>
-                      <FormControl>
-                        <Input
-                          placeholder="e.g., Standard NDA Agreement"
-                          {...field}
-                          data-testid="input-template-title"
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="category"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Category</FormLabel>
-                      <Select onValueChange={field.onChange} defaultValue={field.value}>
-                        <FormControl>
-                          <SelectTrigger data-testid="select-template-category">
-                            <SelectValue placeholder="Select a category" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          <SelectItem value="nda">NDA</SelectItem>
-                          <SelectItem value="employment">Employment</SelectItem>
-                          <SelectItem value="service_agreement">Service Agreement</SelectItem>
-                          <SelectItem value="partnership">Partnership</SelectItem>
-                          <SelectItem value="lease">Lease</SelectItem>
-                          <SelectItem value="other">Other</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="description"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Description (Optional)</FormLabel>
-                      <FormControl>
-                        <Input
-                          placeholder="Brief description of this template"
-                          {...field}
-                          data-testid="input-template-description"
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="content"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Template Content</FormLabel>
-                      <FormControl>
-                        <Textarea
-                          placeholder="Paste your legal template content here..."
-                          className="min-h-64 font-mono text-sm"
-                          {...field}
-                          data-testid="textarea-template-content"
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <div className="flex justify-end gap-3">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => setIsDialogOpen(false)}
-                    data-testid="button-cancel-upload"
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    type="submit"
-                    disabled={uploadMutation.isPending}
-                    data-testid="button-submit-template"
-                  >
-                    {uploadMutation.isPending ? "Uploading..." : "Upload Template"}
-                  </Button>
-                </div>
-              </form>
-            </Form>
+
+            <Tabs defaultValue="file" className="w-full" onValueChange={(value) => setUploadMode(value as "file" | "manual")}>
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="file">
+                  <Upload className="h-4 w-4 mr-2" />
+                  Upload File
+                </TabsTrigger>
+                <TabsTrigger value="manual">
+                  <FileText className="h-4 w-4 mr-2" />
+                  Manual Input
+                </TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="file" className="space-y-4 mt-4">
+                <form onSubmit={handleFileUpload} className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="file-upload">Template File</Label>
+                    <div className="flex flex-col gap-2">
+                      <Input
+                        id="file-upload"
+                        type="file"
+                        accept=".pdf,.docx,.txt"
+                        onChange={handleFileChange}
+                        data-testid="input-file-upload"
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Supported formats: PDF, DOCX, TXT (Max 10MB)
+                      </p>
+                      {selectedFile && (
+                        <p className="text-sm text-green-600">
+                          Selected: {selectedFile.name}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="file-title">Template Title</Label>
+                    <Input
+                      id="file-title"
+                      placeholder="e.g., Standard NDA Agreement"
+                      value={fileUploadData.title}
+                      onChange={(e) => setFileUploadData({ ...fileUploadData, title: e.target.value })}
+                      data-testid="input-file-template-title"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="file-category">Category</Label>
+                    <Select
+                      value={fileUploadData.category}
+                      onValueChange={(value) => setFileUploadData({ ...fileUploadData, category: value })}
+                    >
+                      <SelectTrigger id="file-category" data-testid="select-file-template-category">
+                        <SelectValue placeholder="Select a category" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="nda">NDA</SelectItem>
+                        <SelectItem value="employment">Employment</SelectItem>
+                        <SelectItem value="service_agreement">Service Agreement</SelectItem>
+                        <SelectItem value="partnership">Partnership</SelectItem>
+                        <SelectItem value="lease">Lease</SelectItem>
+                        <SelectItem value="other">Other</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="file-description">Description (Optional)</Label>
+                    <Input
+                      id="file-description"
+                      placeholder="Brief description of this template"
+                      value={fileUploadData.description}
+                      onChange={(e) => setFileUploadData({ ...fileUploadData, description: e.target.value })}
+                      data-testid="input-file-template-description"
+                    />
+                  </div>
+
+                  <div className="flex justify-end gap-3">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setIsDialogOpen(false)}
+                      data-testid="button-cancel-file-upload"
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      type="submit"
+                      disabled={fileUploadMutation.isPending}
+                      data-testid="button-submit-file-template"
+                    >
+                      {fileUploadMutation.isPending ? "Uploading..." : "Upload Template"}
+                    </Button>
+                  </div>
+                </form>
+              </TabsContent>
+
+              <TabsContent value="manual" className="space-y-4 mt-4">
+                <Form {...form}>
+                  <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+                    <FormField
+                      control={form.control}
+                      name="title"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Template Title</FormLabel>
+                          <FormControl>
+                            <Input
+                              placeholder="e.g., Standard NDA Agreement"
+                              {...field}
+                              data-testid="input-template-title"
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="category"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Category</FormLabel>
+                          <Select onValueChange={field.onChange} defaultValue={field.value}>
+                            <FormControl>
+                              <SelectTrigger data-testid="select-template-category">
+                                <SelectValue placeholder="Select a category" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="nda">NDA</SelectItem>
+                              <SelectItem value="employment">Employment</SelectItem>
+                              <SelectItem value="service_agreement">Service Agreement</SelectItem>
+                              <SelectItem value="partnership">Partnership</SelectItem>
+                              <SelectItem value="lease">Lease</SelectItem>
+                              <SelectItem value="other">Other</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="description"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Description (Optional)</FormLabel>
+                          <FormControl>
+                            <Input
+                              placeholder="Brief description of this template"
+                              {...field}
+                              value={field.value || ""}
+                              data-testid="input-template-description"
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="content"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Template Content</FormLabel>
+                          <FormControl>
+                            <Textarea
+                              placeholder="Paste your legal template content here..."
+                              className="min-h-64 font-mono text-sm"
+                              {...field}
+                              data-testid="textarea-template-content"
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <div className="flex justify-end gap-3">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => setIsDialogOpen(false)}
+                        data-testid="button-cancel-upload"
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        type="submit"
+                        disabled={uploadMutation.isPending}
+                        data-testid="button-submit-template"
+                      >
+                        {uploadMutation.isPending ? "Uploading..." : "Upload Template"}
+                      </Button>
+                    </div>
+                  </form>
+                </Form>
+              </TabsContent>
+            </Tabs>
           </DialogContent>
         </Dialog>
       </div>
