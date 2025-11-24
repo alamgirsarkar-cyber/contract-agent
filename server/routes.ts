@@ -223,7 +223,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       const template = await storage.createTemplate(validatedData);
-      console.log(`Template ${template.id} created from file: ${template.title}`);
 
       // Generate and store embedding
       try {
@@ -231,12 +230,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const storeResult = await storeTemplateEmbedding(template.id, parseResult.content, embedding);
 
         if (storeResult.success) {
-          console.log(`Template ${template.id} embedded and stored in Supabase vector database`);
+          console.log(`✅ Template ${template.id} embedded and stored in Supabase vector database`);
         } else {
-          console.warn(`Template ${template.id} created but embedding storage failed: ${storeResult.error}`);
+          console.error(`❌ Embedding storage failed for ${template.id}: ${storeResult.error}`);
         }
       } catch (embeddingError) {
-        console.error("Failed to generate/store embedding:", embeddingError);
+        console.error(`❌ Failed to generate/store embedding for ${template.id}:`, embeddingError);
       }
 
       res.status(201).json(template);
