@@ -1,0 +1,123 @@
+LOAN AGREEMENT
+
+PARTIES
+This Loan Agreement (hereinafter referred to as the "Agreement") is entered into on [DATE] (the "Effective Date"), by and between [BORROWER_NAME], with an address of [BORROWER_ADDRESS] (hereinafter referred to as the "Borrower"), and [LENDER_NAME], with an address of [LENDER_ADDRESS] (hereinafter referred to as the "Lender") (collectively referred to as the "Parties").
+
+INFORMATION
+The Parties agree to insert their basic information down below:
+
+BORROWER INFORMATION:
+Name: [BORROWER_NAME]
+Address: [BORROWER_ADDRESS]
+Email: [BORROWER_EMAIL]
+Phone Number: [BORROWER_PHONE]
+References: [REFERENCE_NAME_1], Phone: [REFERENCE_PHONE_1]
+           [REFERENCE_NAME_2], Phone: [REFERENCE_PHONE_2]
+Security and Collateral Items: [COLLATERAL_DESCRIPTION]
+
+LENDER INFORMATION:
+Name: [LENDER_NAME]
+Address: [LENDER_ADDRESS]
+Email: [LENDER_EMAIL]
+Phone Number: [LENDER_PHONE]
+
+LOAN TERMS
+The Parties agree that the loan information set below is accurate:
+
+Start Date of the First Payment: [FIRST_PAYMENT_DATE]
+End Date of the Last Payment: [LAST_PAYMENT_DATE]
+Loan Amount: $[LOAN_AMOUNT]
+Interest Rate: [INTEREST_RATE]%
+Late Fee: $[LATE_FEE_AMOUNT]
+Payment Method: [PAYMENT_METHOD]
+
+ACKNOWLEDGEMENT
+Hereby, the Parties agree that the Lender will lend $[LOAN_AMOUNT] to the Borrower as per this Agreement.
+
+PAYMENT
+Hereby, the Parties agree that the date of the First Payment is [FIRST_PAYMENT_DATE] and will continue until the date of the Last Payment, which is [LAST_PAYMENT_DATE].
+
+The payment is due every [PAYMENT_FREQUENCY] (weekly/monthly/quarterly). The method of payment will be [PAYMENT_METHOD] (check/bank transfer/cash/online payment).
+
+PROMISE TO PAY
+The Parties hereby agree that the Borrower promises to pay the Lender $[TOTAL_AMOUNT] including principal and interest within [LOAN_TERM] from the Effective Date.
+
+LATE CHARGES
+The Parties agree that any late payment of [GRACE_PERIOD] days will be subject to $[LATE_FEE_AMOUNT] as late charges.
+
+DEFAULT
+This Agreement will be regarded as in default in case of:
+   a) The Borrower does not pay by the due date
+   b) The Borrower's death
+   c) The Borrower's bankruptcy
+   d) The Borrower's inability to pay
+
+In the event of default, the entire outstanding balance shall become immediately due and payable.
+
+SECURITY
+The Parties agree that for the sake of protection of the Lender, the Borrower will provide the following security interest or mortgage:
+
+[SECURITY_DESCRIPTION]
+
+The Borrower grants the Lender a security interest in the above-described collateral as security for the repayment of the loan.
+
+PREPAYMENT
+The Borrower may prepay all or any portion of the loan amount at any time without penalty. Any prepayment shall be applied first to accrued interest and then to principal.
+
+AMENDMENTS
+The Parties agree that any amendments made to this Agreement must be in writing where they must be signed by both Parties to this Agreement.
+
+As such, any amendments made by the Parties will be applied to this Agreement.
+
+ASSIGNMENT
+The Parties hereby agree not to assign any of the responsibilities in this Agreement to a third party unless consented to by both Parties in writing.
+
+GOVERNING LAW
+This Agreement shall be governed by and construed in accordance with the laws of [STATE/COUNTRY].
+
+ALTERNATIVE DISPUTE RESOLUTION
+Any dispute or difference whatsoever arising out of or in connection with this Agreement shall be submitted to [ARBITRATION/MEDIATION/NEGOTIATION] in accordance with, and subject to the laws of [STATE/COUNTRY].
+
+ENTIRE AGREEMENT
+This Agreement contains the entire agreement and understanding among the Parties hereto with respect to the subject matter hereof, and supersedes all prior agreements, understandings, inducements and conditions, express or implied, oral or written, of any nature whatsoever with respect to the subject matter hereof. The express terms hereof control and supersede any course of performance and/or usage of the trade inconsistent with any of the terms hereof.
+
+OWNERSHIP
+The Parties agree that this Agreement is not transferable unless a written consent is provided by both Parties of this Agreement.
+
+SEVERABILITY
+In an event where any provision of this Agreement is found to be void and unenforceable by a court of competent jurisdiction, then the remaining provisions will remain to be enforced in accordance with the Parties' intention.
+
+NOTICES
+All notices required or permitted under this Agreement shall be in writing and shall be deemed delivered when:
+   a) Delivered in person
+   b) Sent by certified mail, return receipt requested
+   c) Sent by email with confirmation of receipt
+
+SIGNATURES
+The Parties hereby agree to the terms and conditions set forth in this Agreement and such is demonstrated by their signatures below:
+
+BORROWER:
+
+Name: _________________________________
+
+Signature: _____________________________
+
+Date: __________________________________
+
+
+LENDER:
+
+Name: _________________________________
+
+Signature: _____________________________
+
+Date: __________________________________
+
+
+WITNESS (Optional):
+
+Name: _________________________________
+
+Signature: _____________________________
+
+Date: __________________________________

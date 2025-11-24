@@ -31,6 +31,15 @@ These are test templates you can use to populate your database and test the appl
 
 ---
 
+### 4. `sample-loan-agreement.txt`
+**Type:** Loan Agreement
+**Category:** Financial / Lending
+**Description:** Comprehensive loan agreement with payment terms, security, and default provisions
+
+**Use Case:** Formalizing personal or business loans with clear repayment terms, interest rates, and collateral requirements.
+
+---
+
 ## How to Upload Templates
 
 ### Step 1: Make Sure Database is Set Up
@@ -66,6 +75,7 @@ Suggested categories for organizing templates:
 - `Legal` - NDAs, general legal agreements
 - `Employment` - Employment contracts, offer letters
 - `Freelance` - Contractor agreements, consulting contracts
+- `Financial` - Loan agreements, promissory notes, investment agreements
 - `Services` - Service agreements, SLAs
 - `Sales` - Sales contracts, purchase agreements
 - `Real Estate` - Lease agreements, property contracts
