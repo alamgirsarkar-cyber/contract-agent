@@ -85,15 +85,17 @@ async function retrieveTemplates(
     }
 
     const proposalEmbedding = await embeddings.embedQuery(state.proposal);
-    
+    console.log(`🔍 RAG: Generated proposal embedding (${proposalEmbedding.length} dimensions)`);
+
     const searchResult = await searchTemplatesByEmbedding(
       proposalEmbedding,
-      0.5,
+      0.3,  // Lowered to 30% for better matching
       5
     );
 
     if (!searchResult.success || searchResult.data.length === 0) {
-      console.warn(`RAG search failed or no matches: ${searchResult.error || 'No similar templates'}. Falling back to first template.`);
+      console.warn(`⚠️ RAG search failed or no matches: ${searchResult.error || 'No similar templates'}. Falling back to first template.`);
+      console.log(`Available templates: ${allTemplates.length}, Supabase available: ${checkSupabaseAvailability()}`);
       
       await storage.incrementTemplateUsage(allTemplates[0].id);
       
@@ -107,13 +109,18 @@ async function retrieveTemplates(
       };
     }
 
+    console.log(`✅ RAG: Found ${searchResult.data.length} matching templates`);
+    searchResult.data.forEach((match, idx) => {
+      console.log(`  ${idx + 1}. Template ID: ${match.template_id.substring(0, 8)}... | Similarity: ${(match.similarity * 100).toFixed(1)}%`);
+    });
+
     const bestMatch = searchResult.data[0];
     const template = await storage.getTemplate(bestMatch.template_id);
-    
+
     if (!template) {
-      console.warn("RAG-selected template not found in storage, using first available");
+      console.warn("⚠️ RAG-selected template not found in storage, using first available");
       await storage.incrementTemplateUsage(allTemplates[0].id);
-      
+
       return {
         templateContent: allTemplates[0].content,
         templateId: allTemplates[0].id,
@@ -125,7 +132,7 @@ async function retrieveTemplates(
     }
 
     await storage.incrementTemplateUsage(template.id);
-    console.log(`RAG: Using template ${template.id} with ${searchResult.data.length} similar matches`);
+    console.log(`🎯 RAG: Using template "${template.title}" (similarity: ${(bestMatch.similarity * 100).toFixed(1)}%)`);
 
     return {
       templateContent: template.content,
@@ -270,7 +277,7 @@ async function retrieveContractAndContext(
       const proposalEmbedding = await embeddings.embedQuery(state.proposalText);
       const searchResult = await searchTemplatesByEmbedding(
         proposalEmbedding,
-        0.5,
+        0.3,  // Lowered to 30% for better matching
         3
       );
 
@@ -399,6 +406,6 @@ export async function searchSimilarTemplates(
   limit: number = 3
 ): Promise<any[]> {
   const queryEmbedding = await generateEmbedding(query);
-  const result = await searchTemplatesByEmbedding(queryEmbedding, 0.7, limit);
+  const result = await searchTemplatesByEmbedding(queryEmbedding, 0.3, limit);  // Lowered to 30% for better matching
   return result.success ? result.data : [];
 }

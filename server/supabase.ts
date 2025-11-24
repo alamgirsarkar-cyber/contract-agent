@@ -39,6 +39,8 @@ export async function searchTemplatesByEmbedding(
   }
 
   try {
+    console.log(`🔎 Supabase: Calling match_templates (threshold: ${matchThreshold}, limit: ${matchCount})`);
+
     const { data, error } = await client.rpc("match_templates", {
       query_embedding: queryEmbedding,
       match_threshold: matchThreshold,
@@ -46,13 +48,15 @@ export async function searchTemplatesByEmbedding(
     });
 
     if (error) {
-      console.error("Supabase RPC error in searchTemplatesByEmbedding:", error);
+      console.error("❌ Supabase RPC error in searchTemplatesByEmbedding:", error);
       return {
         success: false,
         data: [],
         error: `Vector search failed: ${error.message}. Ensure match_templates function exists in Supabase.`,
       };
     }
+
+    console.log(`✅ Supabase: match_templates returned ${data?.length || 0} results`);
 
     return {
       success: true,
