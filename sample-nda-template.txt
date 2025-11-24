@@ -1,0 +1,79 @@
+MUTUAL NON-DISCLOSURE AGREEMENT
+
+This Mutual Non-Disclosure Agreement (the "Agreement") is entered into as of [DATE] (the "Effective Date") by and between:
+
+PARTY A: [COMPANY_NAME]
+Address: [ADDRESS]
+("Disclosing Party A")
+
+AND
+
+PARTY B: [COMPANY_NAME]
+Address: [ADDRESS]
+("Disclosing Party B")
+
+(Each a "Party" and collectively the "Parties")
+
+WHEREAS, the Parties wish to explore a business opportunity of mutual interest and in connection with this opportunity, each Party may disclose to the other certain confidential technical and business information that the disclosing Party desires the receiving Party to treat as confidential.
+
+NOW, THEREFORE, in consideration of the mutual covenants and agreements contained herein, the Parties agree as follows:
+
+1. DEFINITION OF CONFIDENTIAL INFORMATION
+"Confidential Information" means any information disclosed by one Party to the other Party, either directly or indirectly, in writing, orally, or by inspection of tangible objects, including without limitation:
+   a) Business plans, strategies, and forecasts
+   b) Customer lists and customer information
+   c) Technical data, trade secrets, and know-how
+   d) Financial information
+   e) Product specifications and designs
+   f) Software, source code, and algorithms
+
+2. OBLIGATIONS OF RECEIVING PARTY
+Each Party agrees to:
+   a) Hold and maintain the Confidential Information in strict confidence
+   b) Not disclose the Confidential Information to third parties without prior written consent
+   c) Use the Confidential Information solely for the purpose of evaluating the business opportunity
+   d) Protect the Confidential Information with the same degree of care as it protects its own confidential information
+
+3. EXCLUSIONS FROM CONFIDENTIAL INFORMATION
+The obligations set forth in this Agreement shall not apply to any information that:
+   a) Was known to the receiving Party prior to disclosure
+   b) Is or becomes publicly available through no breach of this Agreement
+   c) Is rightfully received from a third party without breach of any confidentiality obligation
+   d) Is independently developed by the receiving Party
+
+4. TERM
+This Agreement shall commence on the Effective Date and continue for a period of [DURATION] years, unless earlier terminated by either Party with thirty (30) days written notice.
+
+5. RETURN OF MATERIALS
+Upon termination or at the disclosing Party's request, the receiving Party shall promptly return or destroy all Confidential Information and certify such destruction in writing.
+
+6. NO LICENSE
+Nothing in this Agreement grants any license or rights under any patent, copyright, trademark, or other intellectual property rights.
+
+7. REMEDIES
+Each Party acknowledges that breach of this Agreement may cause irreparable harm for which monetary damages are inadequate, and agrees that the non-breaching Party shall be entitled to equitable relief, including injunction and specific performance.
+
+8. GOVERNING LAW
+This Agreement shall be governed by and construed in accordance with the laws of [JURISDICTION], without regard to its conflict of law provisions.
+
+9. ENTIRE AGREEMENT
+This Agreement constitutes the entire agreement between the Parties concerning the subject matter hereof and supersedes all prior agreements and understandings.
+
+10. AMENDMENTS
+This Agreement may only be amended or modified by a written instrument signed by both Parties.
+
+IN WITNESS WHEREOF, the Parties have executed this Agreement as of the Effective Date.
+
+PARTY A:                                    PARTY B:
+
+_________________________                   _________________________
+Signature                                   Signature
+
+_________________________                   _________________________
+Name: [NAME]                                Name: [NAME]
+
+_________________________                   _________________________
+Title: [TITLE]                              Title: [TITLE]
+
+_________________________                   _________________________
+Date                                        Date

@@ -1,0 +1,115 @@
+EMPLOYMENT CONTRACT
+
+This Employment Contract (the "Agreement") is made and entered into on [DATE] by and between:
+
+EMPLOYER: [COMPANY_NAME]
+Address: [COMPANY_ADDRESS]
+("Company")
+
+AND
+
+EMPLOYEE: [EMPLOYEE_NAME]
+Address: [EMPLOYEE_ADDRESS]
+("Employee")
+
+WHEREAS, the Company desires to employ the Employee, and the Employee desires to be employed by the Company, on the terms and conditions set forth in this Agreement.
+
+NOW, THEREFORE, in consideration of the mutual covenants and agreements herein contained, the parties agree as follows:
+
+1. POSITION AND DUTIES
+The Company hereby employs the Employee in the position of [JOB_TITLE]. The Employee shall perform such duties as are customarily associated with this position and such other duties as may be assigned by the Company from time to time.
+
+2. TERM OF EMPLOYMENT
+This Agreement shall commence on [START_DATE] and shall continue until terminated in accordance with the provisions of this Agreement. This is an [at-will/fixed-term] employment relationship.
+
+3. COMPENSATION
+   a) Base Salary: The Employee shall receive an annual base salary of $[AMOUNT], payable in accordance with the Company's standard payroll practices.
+   b) Payment Schedule: Salary shall be paid [bi-weekly/monthly] via [direct deposit/check].
+   c) Review: The Employee's compensation shall be reviewed annually and may be adjusted at the Company's discretion.
+
+4. BENEFITS
+The Employee shall be entitled to participate in the following benefit programs:
+   a) Health insurance
+   b) Dental and vision insurance
+   c) Retirement plan (401k)
+   d) Life insurance
+   e) Disability insurance
+   f) Other benefits as offered by the Company
+
+5. PAID TIME OFF
+   a) Vacation: The Employee shall be entitled to [NUMBER] days of paid vacation per year.
+   b) Sick Leave: The Employee shall be entitled to [NUMBER] days of paid sick leave per year.
+   c) Holidays: The Employee shall be entitled to all Company-recognized holidays.
+   d) PTO Policy: All time off is subject to the Company's PTO policy and must be approved in advance.
+
+6. WORK HOURS AND LOCATION
+   a) Standard Hours: The Employee's standard work hours shall be [HOURS], [DAYS] per week.
+   b) Location: The Employee shall primarily work at [LOCATION/REMOTE].
+   c) Overtime: Non-exempt employees shall be paid overtime in accordance with applicable law.
+
+7. CONFIDENTIALITY
+The Employee acknowledges that during employment, they will have access to confidential and proprietary information. The Employee agrees to:
+   a) Maintain strict confidentiality of all Company information
+   b) Not disclose confidential information to third parties
+   c) Return all confidential materials upon termination
+   d) Not use confidential information for personal benefit
+
+8. NON-COMPETE AND NON-SOLICITATION
+During employment and for [DURATION] following termination, the Employee agrees to:
+   a) Not engage in any business that directly competes with the Company
+   b) Not solicit or attempt to hire Company employees
+   c) Not solicit Company clients or customers
+   d) Not interfere with Company business relationships
+
+9. INTELLECTUAL PROPERTY
+All work product, inventions, and intellectual property created by the Employee during employment shall be the sole property of the Company. The Employee agrees to:
+   a) Assign all rights to work product to the Company
+   b) Execute any documents necessary to perfect Company ownership
+   c) Assist the Company in protecting intellectual property rights
+
+10. TERMINATION
+    a) By Employee: The Employee may terminate employment by providing [NOTICE_PERIOD] written notice.
+    b) By Company: The Company may terminate employment at any time with or without cause.
+    c) For Cause: Immediate termination may occur for misconduct, violation of policy, or poor performance.
+    d) Severance: Severance pay, if any, shall be at the Company's discretion.
+
+11. RETURN OF COMPANY PROPERTY
+Upon termination, the Employee shall immediately return all Company property, including:
+   a) Computer equipment and devices
+   b) Access cards and keys
+   c) Documents and files
+   d) Any other Company materials
+
+12. POST-TERMINATION OBLIGATIONS
+The Employee's obligations regarding confidentiality, non-compete, and intellectual property shall survive termination of employment.
+
+13. ENTIRE AGREEMENT
+This Agreement constitutes the entire agreement between the parties and supersedes all prior agreements and understandings, whether written or oral.
+
+14. AMENDMENTS
+This Agreement may only be amended by written instrument signed by both parties.
+
+15. GOVERNING LAW
+This Agreement shall be governed by the laws of [STATE/COUNTRY].
+
+16. SEVERABILITY
+If any provision of this Agreement is found to be unenforceable, the remaining provisions shall remain in full force and effect.
+
+17. ACKNOWLEDGMENT
+The Employee acknowledges that they have read this Agreement, understand its terms, and voluntarily agree to be bound by its provisions.
+
+IN WITNESS WHEREOF, the parties have executed this Agreement as of the date first written above.
+
+EMPLOYER:                                   EMPLOYEE:
+
+_________________________                   _________________________
+Signature                                   Signature
+
+_________________________                   _________________________
+Name: [NAME]                                Name: [EMPLOYEE_NAME]
+
+_________________________                   _________________________
+Title: [TITLE]                              Date
+
+_________________________
+Date

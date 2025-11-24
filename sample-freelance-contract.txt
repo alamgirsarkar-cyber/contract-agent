@@ -1,0 +1,148 @@
+INDEPENDENT CONTRACTOR AGREEMENT
+
+This Independent Contractor Agreement (the "Agreement") is entered into as of [DATE] by and between:
+
+CLIENT: [CLIENT_NAME]
+Address: [CLIENT_ADDRESS]
+("Client")
+
+AND
+
+CONTRACTOR: [CONTRACTOR_NAME]
+Address: [CONTRACTOR_ADDRESS]
+("Contractor")
+
+WHEREAS, the Client desires to engage the Contractor to provide certain services, and the Contractor agrees to provide such services, on the terms and conditions set forth below.
+
+NOW, THEREFORE, in consideration of the mutual promises and covenants contained herein, the parties agree as follows:
+
+1. SERVICES
+The Contractor agrees to provide the following services to the Client:
+   [DESCRIPTION_OF_SERVICES]
+
+The services shall be performed in a professional and workmanlike manner in accordance with industry standards.
+
+2. TERM
+This Agreement shall commence on [START_DATE] and shall continue until [END_DATE], unless earlier terminated in accordance with this Agreement.
+
+3. COMPENSATION
+   a) Rate: The Client shall pay the Contractor at the rate of $[RATE] per [hour/project/milestone].
+   b) Total Amount: The total compensation shall not exceed $[MAXIMUM_AMOUNT] unless agreed in writing.
+   c) Payment Terms: Payment shall be made within [NUMBER] days of receipt of invoice.
+   d) Expenses: [Reimbursable/Not reimbursable] expenses must be pre-approved in writing.
+
+4. INVOICING
+The Contractor shall submit invoices [frequency] detailing:
+   a) Services performed
+   b) Hours worked (if hourly)
+   c) Expenses incurred (if applicable)
+   d) Total amount due
+
+5. INDEPENDENT CONTRACTOR STATUS
+The Contractor is an independent contractor and not an employee of the Client. The Contractor:
+   a) Is responsible for all taxes, insurance, and benefits
+   b) Shall not be entitled to employee benefits
+   c) Has the right to control the manner and means of performing services
+   d) May work for other clients
+   e) Is responsible for providing own equipment and tools
+
+6. WORK SCHEDULE
+The Contractor shall determine their own work schedule and methods, provided that:
+   a) Deadlines specified by the Client are met
+   b) The Contractor is available for meetings and communications as reasonably required
+   c) Quality standards are maintained
+
+7. DELIVERABLES
+The Contractor shall provide the following deliverables:
+   [LIST_OF_DELIVERABLES]
+
+Delivery Schedule:
+   - [MILESTONE_1]: [DATE]
+   - [MILESTONE_2]: [DATE]
+   - [FINAL_DELIVERY]: [DATE]
+
+8. INTELLECTUAL PROPERTY
+   a) Work Product: All work product created by the Contractor under this Agreement shall be considered "work made for hire" and shall be the sole property of the Client.
+   b) Assignment: To the extent any work product is not considered work made for hire, the Contractor hereby assigns all rights, title, and interest to the Client.
+   c) Pre-existing Materials: The Contractor retains ownership of any pre-existing materials incorporated into the work product, but grants the Client a perpetual license to use such materials.
+
+9. CONFIDENTIALITY
+The Contractor agrees to:
+   a) Keep all Client information confidential
+   b) Not disclose confidential information to third parties
+   c) Use confidential information only for purposes of this Agreement
+   d) Return all confidential materials upon termination
+
+10. NON-SOLICITATION
+During the term of this Agreement and for [DURATION] thereafter, the Contractor shall not:
+   a) Solicit or attempt to hire Client employees
+   b) Solicit Client customers or clients
+   c) Interfere with Client business relationships
+
+11. WARRANTIES AND REPRESENTATIONS
+The Contractor warrants that:
+   a) Services will be performed in a professional manner
+   b) Work product will be original and not infringe on third-party rights
+   c) Contractor has the right and ability to enter into this Agreement
+   d) Work product will be free from defects
+
+12. INDEMNIFICATION
+The Contractor agrees to indemnify and hold harmless the Client from any claims, damages, or expenses arising from:
+   a) Breach of this Agreement
+   b) Negligence or willful misconduct
+   c) Infringement of intellectual property rights
+   d) Violation of applicable laws
+
+13. LIMITATION OF LIABILITY
+Neither party shall be liable for indirect, incidental, or consequential damages. Total liability shall not exceed the total compensation paid under this Agreement.
+
+14. TERMINATION
+   a) By Either Party: Either party may terminate this Agreement with [NOTICE_PERIOD] written notice.
+   b) For Cause: Either party may terminate immediately for material breach.
+   c) Payment Upon Termination: Client shall pay for all services performed up to the termination date.
+   d) Return of Materials: Contractor shall return all Client materials upon termination.
+
+15. INSURANCE
+The Contractor shall maintain adequate insurance coverage, including:
+   a) Professional liability insurance
+   b) General liability insurance
+   c) Other insurance as reasonably required
+
+16. NO EXCLUSIVITY
+This is a non-exclusive arrangement. The Contractor is free to provide services to other clients.
+
+17. AMENDMENTS
+This Agreement may only be amended by written instrument signed by both parties.
+
+18. DISPUTE RESOLUTION
+   a) Mediation: Disputes shall first be submitted to mediation.
+   b) Arbitration: If mediation fails, disputes shall be resolved through binding arbitration.
+   c) Governing Law: This Agreement shall be governed by the laws of [STATE/COUNTRY].
+
+19. ENTIRE AGREEMENT
+This Agreement constitutes the entire agreement between the parties and supersedes all prior agreements and understandings.
+
+20. SEVERABILITY
+If any provision is found unenforceable, the remaining provisions shall remain in full force and effect.
+
+21. ASSIGNMENT
+Neither party may assign this Agreement without the written consent of the other party.
+
+22. NOTICES
+All notices shall be in writing and sent to the addresses set forth above.
+
+IN WITNESS WHEREOF, the parties have executed this Agreement as of the date first written above.
+
+CLIENT:                                     CONTRACTOR:
+
+_________________________                   _________________________
+Signature                                   Signature
+
+_________________________                   _________________________
+Name: [CLIENT_NAME]                         Name: [CONTRACTOR_NAME]
+
+_________________________                   _________________________
+Title: [TITLE]                              Title: [TITLE]
+
+_________________________                   _________________________
+Date                                        Date
