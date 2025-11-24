@@ -333,7 +333,6 @@ export class SupabaseStorage implements IStorage {
   }
 }
 
-// Temporarily use memory storage while fixing Supabase schema
-export const storage = new MemStorage();
-// TODO: Switch to SupabaseStorage after fixing Supabase table schema
-// export const storage = new SupabaseStorage();
+// Use SupabaseStorage to store templates in Supabase (fixes foreign key constraint)
+// Contracts and validations still use in-memory storage within SupabaseStorage
+export const storage = new SupabaseStorage();
