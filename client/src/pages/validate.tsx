@@ -19,7 +19,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 
 type ValidationResult = {
   status: "compliant" | "issues_found" | "failed";
-  issues: Array<{
+  issues?: Array<{
     type: "error" | "warning" | "info";
     message: string;
     section?: string;
@@ -181,7 +181,7 @@ export default function Validate() {
               </AlertDescription>
             </Alert>
 
-            {validationResult.issues.length > 0 && (
+            {validationResult.issues && validationResult.issues.length > 0 && (
               <div className="space-y-3">
                 <h4 className="font-medium">Issues & Suggestions</h4>
                 {validationResult.issues.map((issue, index) => (
