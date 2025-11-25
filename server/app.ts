@@ -1,6 +1,12 @@
 import "dotenv/config";
 import { type Server } from "node:http";
 
+// Handle SSL certificate issues in development environment
+// This allows connections to services with self-signed certificates (common in corporate environments)
+if (process.env.NODE_ENV === 'development') {
+  process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+}
+
 import express, {
   type Express,
   type Request,

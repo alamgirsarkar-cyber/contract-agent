@@ -1,14 +1,26 @@
 import { createClient } from "@supabase/supabase-js";
+import https from "https";
 
 const supabaseUrl = process.env.SUPABASE_URL || "";
 const supabaseKey = process.env.SUPABASE_KEY || "";
 
 let supabase: ReturnType<typeof createClient> | null = null;
 
+// Custom HTTPS agent that accepts self-signed certificates
+const httpsAgent = new https.Agent({
+  rejectUnauthorized: false, // Allow self-signed certificates
+});
+
 function getSupabaseClient() {
   if (!supabase && supabaseUrl && supabaseKey) {
     try {
-      supabase = createClient(supabaseUrl, supabaseKey);
+      supabase = createClient(supabaseUrl, supabaseKey, {
+        global: {
+          headers: {
+            'User-Agent': 'ContractHub/1.0.0',
+          },
+        },
+      });
       console.log("Supabase client initialized successfully");
     } catch (error) {
       console.error("Failed to initialize Supabase client:", error);
