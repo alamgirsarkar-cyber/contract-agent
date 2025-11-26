@@ -22,7 +22,7 @@ const menuItems = [
     testId: "link-dashboard",
   },
   {
-    title: "Contracts",
+    title: "Generated Contracts",
     url: "/contracts",
     icon: FileText,
     testId: "link-contracts",
