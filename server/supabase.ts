@@ -37,7 +37,7 @@ export function checkSupabaseAvailability(): boolean {
 
 export async function searchTemplatesByEmbedding(
   queryEmbedding: number[],
-  matchThreshold: number = 0.7,
+  matchThreshold: number = 0.3,
   matchCount: number = 3
 ): Promise<{ success: boolean; data: any[]; error?: string }> {
   const client = getSupabaseClient();

@@ -251,7 +251,7 @@ export async function checkDatabaseStatus(): Promise<DatabaseStatus> {
     try {
       const { error: matchError } = await (client as any).rpc("match_templates", {
         query_embedding: new Array(768).fill(0),
-        match_threshold: 0.7,
+        match_threshold: 0.3,
         match_count: 1,
       });
       status.functions.match_templates = !matchError;
