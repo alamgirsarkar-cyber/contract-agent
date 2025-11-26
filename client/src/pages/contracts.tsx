@@ -22,26 +22,27 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
 import type { Contract } from "@shared/schema";
+import { downloadAsDocx } from "@/lib/downloadUtils";
 
 export default function Contracts() {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const { toast } = useToast();
 
-  const downloadContract = (contract: Contract) => {
-    const blob = new Blob([contract.content], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${contract.title || 'contract'}.txt`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    toast({
-      title: "Contract downloaded",
-      description: `${contract.title} has been downloaded successfully.`,
-    });
+  const downloadContract = async (contract: Contract) => {
+    try {
+      await downloadAsDocx(contract.content, contract.title || 'contract');
+      toast({
+        title: "Contract downloaded",
+        description: `${contract.title} has been downloaded as a Word document.`,
+      });
+    } catch (error) {
+      toast({
+        title: "Download failed",
+        description: "Failed to download contract. Please try again.",
+        variant: "destructive",
+      });
+    }
   };
 
   const { data: contracts, isLoading } = useQuery<Contract[]>({

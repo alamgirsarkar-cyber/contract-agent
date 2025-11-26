@@ -11,6 +11,7 @@ import { Sparkles, FileText, CheckCircle, Loader2, Zap, Download } from "lucide-
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { downloadAsDocx } from "@/lib/downloadUtils";
 
 type GenerationStep = "proposal" | "generating" | "review";
 
@@ -67,20 +68,20 @@ export default function Generate() {
     },
   });
 
-  const downloadContract = () => {
-    const blob = new Blob([generatedContent], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${contractTitle || 'contract'}.txt`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    toast({
-      title: "Contract downloaded",
-      description: "Your contract has been downloaded successfully.",
-    });
+  const downloadContract = async () => {
+    try {
+      await downloadAsDocx(generatedContent, contractTitle || 'contract');
+      toast({
+        title: "Contract downloaded",
+        description: "Your contract has been downloaded as a Word document.",
+      });
+    } catch (error) {
+      toast({
+        title: "Download failed",
+        description: "Failed to download contract. Please try again.",
+        variant: "destructive",
+      });
+    }
   };
 
   const steps = [
