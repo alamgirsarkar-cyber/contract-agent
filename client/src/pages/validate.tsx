@@ -211,11 +211,17 @@ export default function Validate() {
                       <SelectValue placeholder="Choose a contract" />
                     </SelectTrigger>
                     <SelectContent>
-                      {contracts?.map((contract) => (
-                        <SelectItem key={contract.id} value={contract.id}>
-                          {contract.title} ({contract.status})
-                        </SelectItem>
-                      ))}
+                      {contracts && contracts.length > 0 ? (
+                        contracts.map((contract) => (
+                          <SelectItem key={contract.id} value={contract.id}>
+                            {contract.title} ({contract.status})
+                          </SelectItem>
+                        ))
+                      ) : (
+                        <div className="px-2 py-6 text-center text-sm text-muted-foreground">
+                          No contracts available. Generate a contract first.
+                        </div>
+                      )}
                     </SelectContent>
                   </Select>
                 </div>

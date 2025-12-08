@@ -282,7 +282,7 @@ const contractGenerationGraph = new StateGraph(ContractGenerationState)
 export const contractGenerationWorkflow = contractGenerationGraph.compile();
 
 const ValidationState = Annotation.Root({
-  contractId: Annotation<string>(),
+  contractId: Annotation<string | null>(),
   contractContent: Annotation<string>(),
   proposalText: Annotation<string>(),
   relevantContext: Annotation<any[]>(),
@@ -296,6 +296,64 @@ async function retrieveContractAndContext(
   state: typeof ValidationState.State
 ): Promise<Partial<typeof ValidationState.State>> {
   try {
+    // If contractContent is already provided (from file upload), skip retrieval
+    if (state.contractContent) {
+      console.log("Contract content already provided (uploaded file), skipping retrieval");
+
+      if (!checkSupabaseAvailability()) {
+        console.warn("Supabase not available, validating without RAG context");
+        return {
+          contractContent: state.contractContent,
+          relevantContext: [],
+          useRag: false,
+          step: "validate",
+          error: null,
+        };
+      }
+
+      try {
+        const proposalEmbedding = await embeddings.embedQuery(state.proposalText);
+        const searchResult = await searchTemplatesByEmbedding(
+          proposalEmbedding,
+          0.3,
+          3
+        );
+
+        if (!searchResult.success) {
+          console.warn(`RAG context retrieval failed: ${searchResult.error}. Validating without context.`);
+          return {
+            contractContent: state.contractContent,
+            relevantContext: [],
+            useRag: false,
+            step: "validate",
+            error: null,
+          };
+        }
+
+        return {
+          contractContent: state.contractContent,
+          relevantContext: searchResult.data,
+          useRag: searchResult.data.length > 0,
+          step: "validate",
+          error: null,
+        };
+      } catch (embeddingError) {
+        console.warn("Failed to retrieve RAG context, validating without it:", embeddingError);
+        return {
+          contractContent: state.contractContent,
+          relevantContext: [],
+          useRag: false,
+          step: "validate",
+          error: null,
+        };
+      }
+    }
+
+    // Otherwise, retrieve contract by ID
+    if (!state.contractId) {
+      return { error: "Contract ID or content must be provided", step: "error" };
+    }
+
     const contract = await storage.getContract(state.contractId);
     if (!contract) {
       return { error: "Contract not found", step: "error" };
