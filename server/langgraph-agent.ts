@@ -173,12 +173,12 @@ async function generateContract(
       ? `Retrieved via RAG (semantic search) - ${state.relevantTemplates.length} similar templates analyzed`
       : "Using available template (RAG unavailable or no matches)";
 
-    const prompt = `You are a legal contract generation assistant. Generate a professional contract based on the following:
+    const prompt = `You are an expert legal contract generation assistant. Generate a comprehensive, professionally structured legal contract.
 
-TEMPLATE (${ragInfo}):
+REFERENCE TEMPLATE (${ragInfo}):
 ${state.templateContent}
 
-BUSINESS PROPOSAL:
+BUSINESS PROPOSAL/DESCRIPTION:
 ${state.proposal}
 
 CONTRACT DETAILS:
@@ -186,16 +186,55 @@ CONTRACT DETAILS:
 - Type: ${state.contractType}
 - Parties: ${state.parties.join(", ")}
 
-Instructions:
-1. Use the template structure as a foundation
-2. Incorporate ALL specific requirements from the business proposal
-3. Customize the contract for the specified parties and contract type
-4. Ensure all legal clauses are properly formatted
-5. Replace template placeholders with actual details from the proposal
-6. Maintain professional legal language
-7. Include all terms, conditions, and clauses mentioned in the proposal
+INSTRUCTIONS - Follow these carefully:
 
-Generate the complete contract:`;
+1. **Extract Key Points from Proposal**: Carefully analyze the business proposal and identify all key requirements, terms, obligations, and specifications mentioned.
+
+2. **Use Template Structure**: Follow the structure, clause organization, and legal language style from the reference template above.
+
+3. **Comprehensive Coverage**: Include ALL standard clauses for a ${state.contractType}, such as:
+   - Purpose/Scope of Agreement
+   - Definitions (if applicable)
+   - Roles & Responsibilities
+   - Payment Terms (if applicable)
+   - Deliverables & Timelines
+   - Confidentiality & Non-Disclosure
+   - Intellectual Property Rights
+   - Warranties & Representations
+   - Limitation of Liability
+   - Indemnification
+   - Term & Termination
+   - Dispute Resolution
+   - Governing Law
+   - Amendment & Modification
+   - Entire Agreement
+   - Signatures
+
+4. **Professional Formatting**:
+   - Use clear numbered sections (1., 2., 3., etc.)
+   - Use subsections where needed (1.1, 1.2, etc.)
+   - Include proper headings for each clause
+   - Use bullet points or numbered lists for multiple items
+   - Maintain consistent legal language throughout
+
+5. **Customization**:
+   - Replace ALL placeholders like [Party A], [Company Name], [Date] with actual party names or clear placeholders
+   - Incorporate specific terms, conditions, and requirements from the business proposal
+   - Add domain-specific clauses based on the contract type
+   - Ensure party names are used consistently
+
+6. **Legal Completeness**:
+   - Each clause should be legally sound and enforceable
+   - Include standard legal protections for both parties
+   - Add signature blocks at the end with proper formatting
+   - Use formal legal terminology appropriately
+
+7. **Length & Detail**: Generate a complete, detailed contract (not just an outline). Include full clause text, not summaries.
+
+OUTPUT FORMAT:
+Generate the contract in a clean, professional format with clear section headings, proper numbering, and complete clause text.
+
+Generate the complete ${state.contractType} contract now:`;
 
     const response = await llm.invoke(prompt);
     const generatedContent = response.content.toString();

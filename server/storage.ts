@@ -5,7 +5,9 @@ import type {
   Template,
   InsertTemplate,
   Validation,
-  InsertValidation
+  InsertValidation,
+  ValidationFeedback,
+  InsertValidationFeedback
 } from "@shared/schema";
 import { supabase } from "./supabase";
 
@@ -24,17 +26,23 @@ export interface IStorage {
   getValidations(): Promise<Validation[]>;
   getValidation(id: string): Promise<Validation | undefined>;
   createValidation(validation: InsertValidation): Promise<Validation>;
+
+  getValidationFeedbacks(): Promise<ValidationFeedback[]>;
+  getValidationFeedback(id: string): Promise<ValidationFeedback | undefined>;
+  createValidationFeedback(feedback: InsertValidationFeedback): Promise<ValidationFeedback>;
 }
 
 export class MemStorage implements IStorage {
   private contracts: Map<string, Contract>;
   private templates: Map<string, Template>;
   private validations: Map<string, Validation>;
+  private validationFeedbacks: Map<string, ValidationFeedback>;
 
   constructor() {
     this.contracts = new Map();
     this.templates = new Map();
     this.validations = new Map();
+    this.validationFeedbacks = new Map();
   }
 
   async getContracts(): Promise<Contract[]> {
@@ -128,16 +136,39 @@ export class MemStorage implements IStorage {
     this.validations.set(id, validation);
     return validation;
   }
+
+  async getValidationFeedbacks(): Promise<ValidationFeedback[]> {
+    return Array.from(this.validationFeedbacks.values()).sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+  }
+
+  async getValidationFeedback(id: string): Promise<ValidationFeedback | undefined> {
+    return this.validationFeedbacks.get(id);
+  }
+
+  async createValidationFeedback(insertFeedback: InsertValidationFeedback): Promise<ValidationFeedback> {
+    const id = randomUUID();
+    const feedback: ValidationFeedback = {
+      ...insertFeedback,
+      id,
+      createdAt: new Date(),
+    };
+    this.validationFeedbacks.set(id, feedback);
+    return feedback;
+  }
 }
 
 // Supabase Storage - stores templates in Supabase vector database
 export class SupabaseStorage implements IStorage {
   private memContracts: Map<string, Contract>;
   private memValidations: Map<string, Validation>;
+  private memValidationFeedbacks: Map<string, ValidationFeedback>;
 
   constructor() {
     this.memContracts = new Map();
     this.memValidations = new Map();
+    this.memValidationFeedbacks = new Map();
   }
 
   // Contracts still use in-memory storage (can be migrated later if needed)
@@ -330,6 +361,27 @@ export class SupabaseStorage implements IStorage {
     };
     this.memValidations.set(id, validation);
     return validation;
+  }
+
+  async getValidationFeedbacks(): Promise<ValidationFeedback[]> {
+    return Array.from(this.memValidationFeedbacks.values()).sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+  }
+
+  async getValidationFeedback(id: string): Promise<ValidationFeedback | undefined> {
+    return this.memValidationFeedbacks.get(id);
+  }
+
+  async createValidationFeedback(insertFeedback: InsertValidationFeedback): Promise<ValidationFeedback> {
+    const id = randomUUID();
+    const feedback: ValidationFeedback = {
+      ...insertFeedback,
+      id,
+      createdAt: new Date(),
+    };
+    this.memValidationFeedbacks.set(id, feedback);
+    return feedback;
   }
 }
 

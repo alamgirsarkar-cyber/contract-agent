@@ -62,6 +62,24 @@ export const insertValidationSchema = createInsertSchema(validations).omit({
 export type InsertValidation = z.infer<typeof insertValidationSchema>;
 export type Validation = typeof validations.$inferSelect;
 
+export const validationFeedback = pgTable("validation_feedback", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  contractId: varchar("contract_id").references(() => contracts.id),
+  fileName: text("file_name"),
+  feedback: text("feedback").notNull(), // "approved" or "rejected"
+  comment: text("comment"),
+  validationResult: jsonb("validation_result").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertValidationFeedbackSchema = createInsertSchema(validationFeedback).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertValidationFeedback = z.infer<typeof insertValidationFeedbackSchema>;
+export type ValidationFeedback = typeof validationFeedback.$inferSelect;
+
 export const contractStatuses = ["draft", "active", "pending", "validated", "archived"] as const;
 export const validationStatuses = ["pending", "compliant", "issues_found", "failed"] as const;
 export const templateCategories = ["nda", "employment", "service_agreement", "partnership", "lease", "other"] as const;

@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -11,7 +12,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { CheckCircle, AlertTriangle, Info, Loader2, FileText } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { CheckCircle, AlertTriangle, Info, Loader2, FileText, Upload, X, ThumbsUp, ThumbsDown } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import type { Contract } from "@shared/schema";
@@ -31,22 +33,89 @@ export default function Validate() {
   const [selectedContractId, setSelectedContractId] = useState<string>("");
   const [proposalText, setProposalText] = useState("");
   const [validationResult, setValidationResult] = useState<ValidationResult | null>(null);
+  const [uploadedFile, setUploadedFile] = useState<File | null>(null);
+  const [uploadedFileContent, setUploadedFileContent] = useState<string>("");
+  const [contractSource, setContractSource] = useState<"existing" | "upload">("existing");
+  const [feedback, setFeedback] = useState<"approved" | "rejected" | null>(null);
+  const [feedbackComment, setFeedbackComment] = useState("");
   const { toast } = useToast();
 
   const { data: contracts } = useQuery<Contract[]>({
     queryKey: ["/api/contracts"],
   });
 
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    const allowedTypes = [
+      'text/plain',
+      'application/pdf',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/msword'
+    ];
+
+    if (!allowedTypes.includes(file.type) && !file.name.endsWith('.txt') && !file.name.endsWith('.pdf') && !file.name.endsWith('.docx') && !file.name.endsWith('.doc')) {
+      toast({
+        title: "Invalid file type",
+        description: "Please upload a TXT, PDF, or DOCX file.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setUploadedFile(file);
+
+    // Read file content for text files
+    if (file.type === 'text/plain' || file.name.endsWith('.txt')) {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const content = event.target?.result as string;
+        setUploadedFileContent(content);
+      };
+      reader.readAsText(file);
+    } else {
+      // For PDF and DOCX, we'll send the file to the server for parsing
+      setUploadedFileContent(`[${file.name}]`);
+    }
+  };
+
+  const removeUploadedFile = () => {
+    setUploadedFile(null);
+    setUploadedFileContent("");
+  };
+
   const validateMutation = useMutation({
     mutationFn: async () => {
-      const response = await apiRequest("POST", "/api/contracts/validate", {
-        contractId: selectedContractId,
-        proposalText,
-      });
-      return response as ValidationResult;
+      if (contractSource === "upload" && uploadedFile) {
+        const formData = new FormData();
+        formData.append("file", uploadedFile);
+        formData.append("proposalText", proposalText);
+
+        const response = await fetch("/api/contracts/validate-upload", {
+          method: "POST",
+          body: formData,
+        });
+
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.message || "Validation failed");
+        }
+
+        return response.json() as Promise<ValidationResult>;
+      } else {
+        const response = await apiRequest("POST", "/api/contracts/validate", {
+          contractId: selectedContractId,
+          proposalText,
+        });
+        return response as ValidationResult;
+      }
     },
     onSuccess: (data) => {
       setValidationResult(data);
+      setFeedback(null);
+      setFeedbackComment("");
       toast({
         title: "Validation complete",
         description: "Contract has been validated against the business proposal.",
@@ -61,7 +130,36 @@ export default function Validate() {
     },
   });
 
+  const submitFeedback = async () => {
+    if (!feedback || !validationResult) return;
+
+    try {
+      await apiRequest("POST", "/api/contracts/validate-feedback", {
+        contractId: contractSource === "existing" ? selectedContractId : null,
+        fileName: uploadedFile?.name,
+        feedback,
+        comment: feedbackComment,
+        validationResult,
+      });
+
+      toast({
+        title: "Feedback submitted",
+        description: "Thank you for your feedback!",
+      });
+    } catch (error) {
+      toast({
+        title: "Failed to submit feedback",
+        description: error instanceof Error ? error.message : "Unknown error",
+        variant: "destructive",
+      });
+    }
+  };
+
   const selectedContract = contracts?.find((c) => c.id === selectedContractId);
+
+  const canValidate = proposalText &&
+    ((contractSource === "existing" && selectedContractId) ||
+     (contractSource === "upload" && uploadedFile));
 
   return (
     <div className="max-w-6xl mx-auto space-y-6">
@@ -99,45 +197,109 @@ export default function Validate() {
             <CardTitle>Contract to Validate</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="contract-select">Select Contract</Label>
-              <Select value={selectedContractId} onValueChange={setSelectedContractId}>
-                <SelectTrigger id="contract-select" data-testid="select-contract">
-                  <SelectValue placeholder="Choose a contract" />
-                </SelectTrigger>
-                <SelectContent>
-                  {contracts?.map((contract) => (
-                    <SelectItem key={contract.id} value={contract.id}>
-                      {contract.title} ({contract.status})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            <Tabs value={contractSource} onValueChange={(v) => setContractSource(v as "existing" | "upload")}>
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="existing">Existing Contract</TabsTrigger>
+                <TabsTrigger value="upload">Upload File</TabsTrigger>
+              </TabsList>
 
-            {selectedContract && (
-              <div className="rounded-lg border bg-muted/50 p-4">
-                <div className="flex items-start gap-3 mb-3">
-                  <FileText className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" />
-                  <div>
-                    <h4 className="font-medium">{selectedContract.title}</h4>
-                    <p className="text-sm text-muted-foreground">
-                      {selectedContract.contractType}
-                    </p>
+              <TabsContent value="existing" className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="contract-select">Select Contract</Label>
+                  <Select value={selectedContractId} onValueChange={setSelectedContractId}>
+                    <SelectTrigger id="contract-select" data-testid="select-contract">
+                      <SelectValue placeholder="Choose a contract" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {contracts?.map((contract) => (
+                        <SelectItem key={contract.id} value={contract.id}>
+                          {contract.title} ({contract.status})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {selectedContract && (
+                  <div className="rounded-lg border bg-muted/50 p-4">
+                    <div className="flex items-start gap-3 mb-3">
+                      <FileText className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" />
+                      <div>
+                        <h4 className="font-medium">{selectedContract.title}</h4>
+                        <p className="text-sm text-muted-foreground">
+                          {selectedContract.contractType}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="max-h-64 overflow-y-auto">
+                      <pre className="whitespace-pre-wrap text-xs font-mono text-muted-foreground">
+                        {selectedContract.content.substring(0, 500)}...
+                      </pre>
+                    </div>
                   </div>
+                )}
+              </TabsContent>
+
+              <TabsContent value="upload" className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="file-upload">Upload Contract File</Label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      id="file-upload"
+                      type="file"
+                      accept=".txt,.pdf,.doc,.docx"
+                      onChange={handleFileUpload}
+                      className="hidden"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => document.getElementById("file-upload")?.click()}
+                      className="w-full"
+                    >
+                      <Upload className="h-4 w-4 mr-2" />
+                      {uploadedFile ? "Change File" : "Choose File"}
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Supported formats: TXT, PDF, DOC, DOCX
+                  </p>
                 </div>
-                <div className="max-h-64 overflow-y-auto">
-                  <pre className="whitespace-pre-wrap text-xs font-mono text-muted-foreground">
-                    {selectedContract.content.substring(0, 500)}...
-                  </pre>
-                </div>
-              </div>
-            )}
+
+                {uploadedFile && (
+                  <div className="rounded-lg border bg-muted/50 p-4">
+                    <div className="flex items-start gap-3 mb-3">
+                      <FileText className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" />
+                      <div className="flex-1">
+                        <h4 className="font-medium">{uploadedFile.name}</h4>
+                        <p className="text-sm text-muted-foreground">
+                          {(uploadedFile.size / 1024).toFixed(2)} KB
+                        </p>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={removeUploadedFile}
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                    {uploadedFileContent && uploadedFileContent !== `[${uploadedFile.name}]` && (
+                      <div className="max-h-64 overflow-y-auto">
+                        <pre className="whitespace-pre-wrap text-xs font-mono text-muted-foreground">
+                          {uploadedFileContent.substring(0, 500)}...
+                        </pre>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </TabsContent>
+            </Tabs>
 
             <Button
               className="w-full"
               onClick={() => validateMutation.mutate()}
-              disabled={!selectedContractId || !proposalText || validateMutation.isPending}
+              disabled={!canValidate || validateMutation.isPending}
               data-testid="button-validate"
             >
               {validateMutation.isPending ? (
@@ -215,6 +377,46 @@ export default function Validate() {
                 ))}
               </div>
             )}
+
+            <div className="border-t pt-4 mt-6">
+              <h4 className="font-medium mb-4">Provide Feedback</h4>
+              <div className="space-y-4">
+                <div className="flex gap-3">
+                  <Button
+                    variant={feedback === "approved" ? "default" : "outline"}
+                    className={feedback === "approved" ? "bg-green-600 hover:bg-green-700" : ""}
+                    onClick={() => setFeedback("approved")}
+                  >
+                    <ThumbsUp className="h-4 w-4 mr-2" />
+                    Approve
+                  </Button>
+                  <Button
+                    variant={feedback === "rejected" ? "default" : "outline"}
+                    className={feedback === "rejected" ? "bg-red-600 hover:bg-red-700" : ""}
+                    onClick={() => setFeedback("rejected")}
+                  >
+                    <ThumbsDown className="h-4 w-4 mr-2" />
+                    Reject
+                  </Button>
+                </div>
+
+                {feedback && (
+                  <div className="space-y-2">
+                    <Label htmlFor="feedback-comment">Comment (optional)</Label>
+                    <Textarea
+                      id="feedback-comment"
+                      placeholder="Add any additional comments about the validation..."
+                      className="min-h-24"
+                      value={feedbackComment}
+                      onChange={(e) => setFeedbackComment(e.target.value)}
+                    />
+                    <Button onClick={submitFeedback} className="w-full">
+                      Submit Feedback
+                    </Button>
+                  </div>
+                )}
+              </div>
+            </div>
           </CardContent>
         </Card>
       )}

@@ -161,8 +161,102 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(result.validationResult);
     } catch (error) {
       console.error("Contract validation error:", error);
-      res.status(500).json({ 
-        error: error instanceof Error ? error.message : "Failed to validate contract" 
+      res.status(500).json({
+        error: error instanceof Error ? error.message : "Failed to validate contract"
+      });
+    }
+  });
+
+  // File upload endpoint for validation
+  app.post("/api/contracts/validate-upload", upload.single("file"), async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ error: "No file uploaded" });
+      }
+
+      const { proposalText } = req.body;
+
+      if (!proposalText) {
+        return res.status(400).json({ error: "Missing required field: proposalText" });
+      }
+
+      console.log(`Validating uploaded file: ${req.file.originalname}`);
+
+      // Parse the uploaded contract file
+      const parseResult = await parseFile(
+        req.file.buffer,
+        req.file.mimetype,
+        req.file.originalname
+      );
+
+      if (parseResult.error || !parseResult.content) {
+        return res.status(400).json({
+          error: parseResult.error || "Failed to extract content from file"
+        });
+      }
+
+      // Use the validation workflow with the parsed content
+      const result = await validationWorkflow.invoke({
+        contractId: null,
+        proposalText,
+        contractContent: parseResult.content,
+        relevantContext: [],
+        useRag: false,
+        validationResult: null,
+        step: "validate", // Skip retrieve step since we have the content
+        error: null,
+      });
+
+      if (result.error) {
+        console.error("Validation workflow error:", result.error);
+        return res.status(500).json({ error: result.error });
+      }
+
+      if (!result.validationResult) {
+        console.error("Validation completed but no result returned");
+        return res.status(500).json({ error: "Validation failed - no result generated" });
+      }
+
+      console.log(`Validated uploaded file: ${req.file.originalname}`);
+
+      res.json(result.validationResult);
+    } catch (error) {
+      console.error("Contract validation (upload) error:", error);
+      res.status(500).json({
+        error: error instanceof Error ? error.message : "Failed to validate contract"
+      });
+    }
+  });
+
+  // Feedback endpoint for validation results
+  app.post("/api/contracts/validate-feedback", async (req, res) => {
+    try {
+      const { contractId, fileName, feedback, comment, validationResult } = req.body;
+
+      if (!feedback || !validationResult) {
+        return res.status(400).json({ error: "Missing required fields: feedback, validationResult" });
+      }
+
+      if (feedback !== "approved" && feedback !== "rejected") {
+        return res.status(400).json({ error: "Invalid feedback value. Must be 'approved' or 'rejected'" });
+      }
+
+      // Store the feedback
+      const feedbackRecord = await storage.createValidationFeedback({
+        contractId: contractId || null,
+        fileName: fileName || null,
+        feedback,
+        comment: comment || null,
+        validationResult,
+      });
+
+      console.log(`Feedback ${feedbackRecord.id} created: ${feedback}`);
+
+      res.json({ success: true, feedbackId: feedbackRecord.id });
+    } catch (error) {
+      console.error("Validation feedback error:", error);
+      res.status(500).json({
+        error: error instanceof Error ? error.message : "Failed to submit feedback"
       });
     }
   });
