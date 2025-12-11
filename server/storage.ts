@@ -23,6 +23,7 @@ export interface IStorage {
   getTemplate(id: string): Promise<Template | undefined>;
   createTemplate(template: InsertTemplate): Promise<Template>;
   incrementTemplateUsage(id: string): Promise<void>;
+  deleteTemplate(id: string): Promise<void>;
 
   getValidations(): Promise<Validation[]>;
   getValidation(id: string): Promise<Validation | undefined>;
@@ -163,6 +164,10 @@ export class MemStorage implements IStorage {
       template.usageCount = (currentCount + 1).toString();
       this.templates.set(id, template);
     }
+  }
+
+  async deleteTemplate(id: string): Promise<void> {
+    this.templates.delete(id);
   }
 
   async getValidations(): Promise<Validation[]> {
@@ -433,6 +438,31 @@ export class SupabaseStorage implements IStorage {
       }
     } catch (error) {
       console.error("Exception incrementing template usage:", error);
+    }
+  }
+
+  async deleteTemplate(id: string): Promise<void> {
+    const client = supabase();
+    if (!client) {
+      console.warn("Supabase not available - cannot delete template");
+      return;
+    }
+
+    try {
+      const { error } = await client
+        .from("templates")
+        .delete()
+        .eq("id", id);
+
+      if (error) {
+        console.error("Error deleting template from Supabase:", error);
+        throw new Error(`Failed to delete template: ${error.message}`);
+      }
+
+      console.log(`Template ${id} deleted from Supabase successfully`);
+    } catch (error) {
+      console.error("Exception deleting template:", error);
+      throw error;
     }
   }
 

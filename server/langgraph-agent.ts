@@ -437,65 +437,85 @@ ${ragInfo}
 
 VALIDATION INSTRUCTIONS - Follow these steps carefully:
 
+IMPORTANT: This contract may have been GENERATED from the proposal. If the contract properly addresses ALL requirements from the proposal, it should be marked as "compliant" even if the language is different or more formal.
+
 1. **Requirements Coverage Analysis**:
    - Extract all specific requirements, terms, and conditions from the business proposal
-   - Check if EACH requirement is explicitly addressed in the contract
-   - Identify any missing requirements or clauses
+   - Check if EACH requirement is substantially addressed in the contract
+   - A requirement is "addressed" if the contract covers the concept, even if wording differs
+   - Only flag as missing if completely absent or contradicted
 
 2. **Compliance & Accuracy Check**:
-   - Verify that contract terms match proposal specifications exactly
-   - Flag any contradictions between proposal and contract
-   - Check for inconsistent terminology or conflicting clauses
+   - Verify that contract terms align with proposal intent
+   - Flag ONLY if there are direct contradictions (e.g., proposal says "monthly", contract says "quarterly")
+   - Different phrasing or more formal language is acceptable
+   - Allow for legal terminology that expresses the same concept
 
-3. **Legal Completeness Assessment**:
-   - Evaluate against standard legal best practices
-   - Identify missing essential clauses (e.g., termination, liability, dispute resolution)
-   - Check for proper definitions and legal terminology
+3. **Reasonable Completeness**:
+   - Check if the contract has the expected structure for its type
+   - Standard legal clauses (termination, liability, etc.) are expected
+   - Only flag if critically important clauses are completely missing
 
-4. **Issue Categorization**:
-   - **ERROR**: Critical issues - missing required terms, contradictions, legal gaps
-   - **WARNING**: Important deviations - different terms than proposed, missing recommended clauses
-   - **INFO**: Suggestions for improvement - additional protective clauses, clarifications
+4. **Issue Categorization** (USE SPARINGLY):
+   - **ERROR**: Only for direct contradictions or completely missing critical requirements
+   - **WARNING**: Deviations that change meaning or scope significantly  
+   - **INFO**: Minor suggestions for additional protection or clarity
+   
+   **DO NOT report issues for:**
+   - Different wording that means the same thing
+   - More formal/legal phrasing of proposal requirements
+   - Standard legal clauses not mentioned in proposal
+   - Reasonable interpretations of vague proposal language
 
-5. **Provide Actionable Feedback**:
-   - For each issue, specify the EXACT section or clause affected
-   - Explain WHAT is missing or wrong
-   - Explain WHY it matters
+5. **Provide Actionable Feedback** (ONLY if real issues exist):
+   - Specify the EXACT section or clause affected
+   - Explain WHAT is genuinely wrong or contradictory
+   - Explain WHY it fails to meet the proposal requirement
    - Suggest HOW to fix it
 
 OUTPUT FORMAT - Return ONLY valid JSON (no markdown, no extra text):
 {
   "status": "compliant" | "issues_found" | "failed",
-  "summary": "2-3 sentence comprehensive summary of validation results, highlighting key findings",
+  "summary": "2-3 sentence comprehensive summary. If compliant, state that the contract properly addresses all proposal requirements.",
   "issues": [
     {
       "type": "error" | "warning" | "info",
-      "section": "Specific section/clause name (e.g., 'Payment Terms', 'Section 4.2')",
-      "message": "Detailed, actionable description:
-        - What the issue is
-        - Why it matters
-        - How to fix it
-        Example: 'The contract specifies quarterly payments, but the proposal requires monthly billing. This creates a significant deviation from agreed terms. Recommendation: Update Section 3.1 to reflect monthly payment schedule as specified in the proposal.'"
+      "section": "Specific section/clause name",
+      "message": "Detailed description of the GENUINE issue with actionable fix"
     }
   ]
 }
 
 CRITICAL REQUIREMENTS:
-- If the contract is fully compliant with the proposal, return status "compliant" with empty issues array
-- If there are issues, return status "issues_found" with detailed issues
-- Only use status "failed" if the contract is fundamentally flawed or missing critical sections
-- Provide AT LEAST 3-5 issues if any exist (don't just highlight the most obvious ones)
-- Each issue message must be detailed and actionable (minimum 2-3 sentences)
-- Always specify the section name if identifiable
+- If the contract addresses all proposal requirements (even in different words), return status "compliant" with empty issues array
+- Only return "issues_found" if there are GENUINE problems (contradictions or missing requirements)
+- Use status "failed" only if the contract is fundamentally broken
+- DO NOT invent issues just to fill the array
+- Empty issues array is perfectly acceptable for a good contract
+- Be lenient with phrasing differences - focus on substance, not style
+
+EXAMPLE OF CORRECT BEHAVIOR:
+- Proposal: "2 year term" → Contract: "Term shall be twenty-four (24) months" → COMPLIANT
+- Proposal: "monthly payments" → Contract: "Payment due quarterly" → ERROR (contradiction)
+- Proposal: "NDA agreement" → Contract contains full NDA clauses → COMPLIANT
 
 Return your response now:`;
 
     const response = await llm.invoke(prompt + "\n\nProvide your response as valid JSON only, with no additional text.");
 
     const responseText = response.content.toString();
+    console.log('Validation LLM response length:', responseText.length);
+    
     // Extract JSON from response (Gemini sometimes wraps it in markdown)
     const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-    const validationResult = jsonMatch ? JSON.parse(jsonMatch[0]) : JSON.parse(responseText);
+    if (!jsonMatch) {
+      console.error('Failed to extract JSON from response:', responseText.substring(0, 200));
+      throw new Error('Invalid validation response format');
+    }
+    
+    const validationResult = JSON.parse(jsonMatch[0]);
+    console.log('Validation result status:', validationResult.status);
+    console.log('Issues count:', validationResult.issues?.length || 0);
 
     // Only update contract status if we have a contract ID (not for uploaded files)
     if (state.contractId) {
