@@ -203,7 +203,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         relevantContext: [],
         useRag: false,
         validationResult: null,
-        step: "validate", // Skip retrieve step since we have the content
+        step: "retrieve", // Start from retrieve (it will detect content is already provided)
         error: null,
       });
 

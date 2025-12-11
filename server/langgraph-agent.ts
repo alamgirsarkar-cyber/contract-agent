@@ -296,6 +296,66 @@ async function retrieveContractAndContext(
   state: typeof ValidationState.State
 ): Promise<Partial<typeof ValidationState.State>> {
   try {
+    // IMPORTANT: Check if contractContent is already provided (from file upload)
+    // If so, skip database retrieval and just handle RAG context
+    if (state.contractContent) {
+      console.log("Contract content already provided (uploaded file), skipping database retrieval");
+
+      // Try to get RAG context for better validation
+      if (!checkSupabaseAvailability()) {
+        console.warn("Supabase not available, validating without RAG context");
+        return {
+          contractContent: state.contractContent,
+          relevantContext: [],
+          useRag: false,
+          step: "validate",
+          error: null,
+        };
+      }
+
+      try {
+        const proposalEmbedding = await embeddings.embedQuery(state.proposalText);
+        const searchResult = await searchTemplatesByEmbedding(
+          proposalEmbedding,
+          0.3,
+          3
+        );
+
+        if (!searchResult.success) {
+          console.warn(`RAG context retrieval failed: ${searchResult.error}. Validating without context.`);
+          return {
+            contractContent: state.contractContent,
+            relevantContext: [],
+            useRag: false,
+            step: "validate",
+            error: null,
+          };
+        }
+
+        return {
+          contractContent: state.contractContent,
+          relevantContext: searchResult.data,
+          useRag: searchResult.data.length > 0,
+          step: "validate",
+          error: null,
+        };
+      } catch (embeddingError) {
+        console.warn("Failed to retrieve RAG context, validating without it:", embeddingError);
+        return {
+          contractContent: state.contractContent,
+          relevantContext: [],
+          useRag: false,
+          step: "validate",
+          error: null,
+        };
+      }
+    }
+
+    // Otherwise, retrieve contract from database by ID
+    if (!state.contractId) {
+      return { error: "Contract ID or content must be provided", step: "error" };
+    }
+
     const contract = await storage.getContract(state.contractId);
     if (!contract) {
       return { error: "Contract not found", step: "error" };
@@ -366,35 +426,69 @@ async function validateContract(
 ${state.relevantContext.length} similar legal template(s) were analyzed for validation context.`
       : "\n\n(Validation performed without RAG context)";
 
-    const prompt = `You are a legal contract validation assistant. Validate the following contract against the business proposal.
+    const prompt = `You are an expert legal contract validation assistant. Perform a comprehensive validation of the contract against the business proposal requirements.
 
-BUSINESS PROPOSAL:
+BUSINESS PROPOSAL / REQUIREMENTS:
 ${state.proposalText}
 
 CONTRACT TO VALIDATE:
 ${state.contractContent}
 ${ragInfo}
 
-Instructions:
-1. Check if all requirements from the proposal are addressed in the contract
-2. Identify any missing clauses or terms
-3. Flag any contradictions or compliance issues
-4. Compare against standard legal practices for completeness
-5. Suggest improvements where applicable
-6. Categorize issues as: error (critical), warning (important), or info (suggestion)
+VALIDATION INSTRUCTIONS - Follow these steps carefully:
 
-Respond with a JSON object in this format:
+1. **Requirements Coverage Analysis**:
+   - Extract all specific requirements, terms, and conditions from the business proposal
+   - Check if EACH requirement is explicitly addressed in the contract
+   - Identify any missing requirements or clauses
+
+2. **Compliance & Accuracy Check**:
+   - Verify that contract terms match proposal specifications exactly
+   - Flag any contradictions between proposal and contract
+   - Check for inconsistent terminology or conflicting clauses
+
+3. **Legal Completeness Assessment**:
+   - Evaluate against standard legal best practices
+   - Identify missing essential clauses (e.g., termination, liability, dispute resolution)
+   - Check for proper definitions and legal terminology
+
+4. **Issue Categorization**:
+   - **ERROR**: Critical issues - missing required terms, contradictions, legal gaps
+   - **WARNING**: Important deviations - different terms than proposed, missing recommended clauses
+   - **INFO**: Suggestions for improvement - additional protective clauses, clarifications
+
+5. **Provide Actionable Feedback**:
+   - For each issue, specify the EXACT section or clause affected
+   - Explain WHAT is missing or wrong
+   - Explain WHY it matters
+   - Suggest HOW to fix it
+
+OUTPUT FORMAT - Return ONLY valid JSON (no markdown, no extra text):
 {
   "status": "compliant" | "issues_found" | "failed",
-  "summary": "Brief summary of validation results",
+  "summary": "2-3 sentence comprehensive summary of validation results, highlighting key findings",
   "issues": [
     {
       "type": "error" | "warning" | "info",
-      "section": "Section name if applicable",
-      "message": "Detailed description of the issue or suggestion"
+      "section": "Specific section/clause name (e.g., 'Payment Terms', 'Section 4.2')",
+      "message": "Detailed, actionable description:
+        - What the issue is
+        - Why it matters
+        - How to fix it
+        Example: 'The contract specifies quarterly payments, but the proposal requires monthly billing. This creates a significant deviation from agreed terms. Recommendation: Update Section 3.1 to reflect monthly payment schedule as specified in the proposal.'"
     }
   ]
-}`;
+}
+
+CRITICAL REQUIREMENTS:
+- If the contract is fully compliant with the proposal, return status "compliant" with empty issues array
+- If there are issues, return status "issues_found" with detailed issues
+- Only use status "failed" if the contract is fundamentally flawed or missing critical sections
+- Provide AT LEAST 3-5 issues if any exist (don't just highlight the most obvious ones)
+- Each issue message must be detailed and actionable (minimum 2-3 sentences)
+- Always specify the section name if identifiable
+
+Return your response now:`;
 
     const response = await llm.invoke(prompt + "\n\nProvide your response as valid JSON only, with no additional text.");
 
@@ -403,12 +497,16 @@ Respond with a JSON object in this format:
     const jsonMatch = responseText.match(/\{[\s\S]*\}/);
     const validationResult = jsonMatch ? JSON.parse(jsonMatch[0]) : JSON.parse(responseText);
 
-    const newStatus = validationResult.status === "compliant" ? "validated" :
-                      validationResult.status === "issues_found" ? "pending" : "draft";
-    
-    await storage.updateContract(state.contractId, { status: newStatus });
-    
-    console.log(`Contract ${state.contractId} validated: ${validationResult.status} (RAG: ${state.useRag})`);
+    // Only update contract status if we have a contract ID (not for uploaded files)
+    if (state.contractId) {
+      const newStatus = validationResult.status === "compliant" ? "validated" :
+                        validationResult.status === "issues_found" ? "pending" : "draft";
+
+      await storage.updateContract(state.contractId, { status: newStatus });
+      console.log(`Contract ${state.contractId} validated: ${validationResult.status} (RAG: ${state.useRag})`);
+    } else {
+      console.log(`Uploaded file validated: ${validationResult.status} (RAG: ${state.useRag})`);
+    }
 
     return {
       validationResult,
