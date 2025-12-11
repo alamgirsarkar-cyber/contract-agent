@@ -10,6 +10,7 @@ import type {
   InsertValidationFeedback
 } from "@shared/schema";
 import { supabase } from "./supabase";
+import { saveContractToFile, loadContractsFromDisk, deleteContractFromDisk } from "./file-storage";
 
 export interface IStorage {
   getContracts(): Promise<Contract[]>;
@@ -37,12 +38,29 @@ export class MemStorage implements IStorage {
   private templates: Map<string, Template>;
   private validations: Map<string, Validation>;
   private validationFeedbacks: Map<string, ValidationFeedback>;
+  private contractsLoaded: boolean = false;
 
   constructor() {
     this.contracts = new Map();
     this.templates = new Map();
     this.validations = new Map();
     this.validationFeedbacks = new Map();
+    // Load contracts from disk asynchronously
+    this.loadContractsFromDiskAsync();
+  }
+
+  private async loadContractsFromDiskAsync(): Promise<void> {
+    try {
+      const contracts = await loadContractsFromDisk();
+      for (const contract of contracts) {
+        this.contracts.set(contract.id, contract);
+      }
+      this.contractsLoaded = true;
+      console.log(`✅ Loaded ${contracts.length} contracts from disk into memory`);
+    } catch (error) {
+      console.error("Failed to load contracts from disk:", error);
+      this.contractsLoaded = true; // Mark as loaded even on error
+    }
   }
 
   async getContracts(): Promise<Contract[]> {
@@ -65,6 +83,15 @@ export class MemStorage implements IStorage {
       updatedAt: now,
     };
     this.contracts.set(id, contract);
+    
+    // Save to disk
+    try {
+      await saveContractToFile(contract);
+    } catch (error) {
+      console.error("Failed to save contract to disk:", error);
+      // Continue even if file save fails
+    }
+    
     return contract;
   }
 
@@ -79,11 +106,31 @@ export class MemStorage implements IStorage {
       updatedAt: new Date(),
     };
     this.contracts.set(id, updated);
+    
+    // Update file on disk
+    try {
+      await saveContractToFile(updated);
+    } catch (error) {
+      console.error("Failed to update contract on disk:", error);
+      // Continue even if file save fails
+    }
+    
     return updated;
   }
 
   async deleteContract(id: string): Promise<void> {
+    const contract = this.contracts.get(id);
     this.contracts.delete(id);
+    
+    // Delete from disk
+    if (contract) {
+      try {
+        await deleteContractFromDisk(contract);
+      } catch (error) {
+        console.error("Failed to delete contract from disk:", error);
+        // Continue even if file delete fails
+      }
+    }
   }
 
   async getTemplates(): Promise<Template[]> {
@@ -164,11 +211,28 @@ export class SupabaseStorage implements IStorage {
   private memContracts: Map<string, Contract>;
   private memValidations: Map<string, Validation>;
   private memValidationFeedbacks: Map<string, ValidationFeedback>;
+  private contractsLoaded: boolean = false;
 
   constructor() {
     this.memContracts = new Map();
     this.memValidations = new Map();
     this.memValidationFeedbacks = new Map();
+    // Load contracts from disk asynchronously
+    this.loadContractsFromDiskAsync();
+  }
+
+  private async loadContractsFromDiskAsync(): Promise<void> {
+    try {
+      const contracts = await loadContractsFromDisk();
+      for (const contract of contracts) {
+        this.memContracts.set(contract.id, contract);
+      }
+      this.contractsLoaded = true;
+      console.log(`✅ Loaded ${contracts.length} contracts from disk into memory`);
+    } catch (error) {
+      console.error("Failed to load contracts from disk:", error);
+      this.contractsLoaded = true; // Mark as loaded even on error
+    }
   }
 
   // Contracts still use in-memory storage (can be migrated later if needed)
@@ -192,6 +256,15 @@ export class SupabaseStorage implements IStorage {
       updatedAt: now,
     };
     this.memContracts.set(id, contract);
+    
+    // Save to disk
+    try {
+      await saveContractToFile(contract);
+    } catch (error) {
+      console.error("Failed to save contract to disk:", error);
+      // Continue even if file save fails
+    }
+    
     return contract;
   }
 
@@ -206,11 +279,31 @@ export class SupabaseStorage implements IStorage {
       updatedAt: new Date(),
     };
     this.memContracts.set(id, updated);
+    
+    // Update file on disk
+    try {
+      await saveContractToFile(updated);
+    } catch (error) {
+      console.error("Failed to update contract on disk:", error);
+      // Continue even if file save fails
+    }
+    
     return updated;
   }
 
   async deleteContract(id: string): Promise<void> {
+    const contract = this.memContracts.get(id);
     this.memContracts.delete(id);
+    
+    // Delete from disk
+    if (contract) {
+      try {
+        await deleteContractFromDisk(contract);
+      } catch (error) {
+        console.error("Failed to delete contract from disk:", error);
+        // Continue even if file delete fails
+      }
+    }
   }
 
   // Templates stored in Supabase
