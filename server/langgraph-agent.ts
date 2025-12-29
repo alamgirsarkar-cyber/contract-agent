@@ -45,6 +45,24 @@ if (LLM_PROVIDER === "ollama") {
   throw new Error(`Unknown LLM_PROVIDER: ${LLM_PROVIDER}. Use "ollama" or "gemini"`);
 }
 
+// Embedding cache to avoid regenerating embeddings for same proposal
+const embeddingCache = new Map<string, number[]>();
+const CACHE_MAX_SIZE = 100;
+
+function getCachedEmbedding(text: string): number[] | null {
+  const cacheKey = text.substring(0, 500); // Use first 500 chars as key
+  return embeddingCache.get(cacheKey) || null;
+}
+
+function setCachedEmbedding(text: string, embedding: number[]): void {
+  const cacheKey = text.substring(0, 500);
+  if (embeddingCache.size >= CACHE_MAX_SIZE) {
+    const firstKey = embeddingCache.keys().next().value;
+    embeddingCache.delete(firstKey);
+  }
+  embeddingCache.set(cacheKey, embedding);
+}
+
 const ContractGenerationState = Annotation.Root({
   proposal: Annotation<string>(),
   contractTitle: Annotation<string>(),
@@ -84,8 +102,15 @@ async function retrieveTemplates(
       };
     }
 
-    const proposalEmbedding = await embeddings.embedQuery(state.proposal);
-    console.log(`🔍 RAG: Generated proposal embedding (${proposalEmbedding.length} dimensions)`);
+    // Check cache first to avoid regenerating embeddings
+    let proposalEmbedding = getCachedEmbedding(state.proposal);
+    if (!proposalEmbedding) {
+      proposalEmbedding = await embeddings.embedQuery(state.proposal);
+      setCachedEmbedding(state.proposal, proposalEmbedding);
+      console.log(`🔍 RAG: Generated new proposal embedding (${proposalEmbedding.length} dimensions)`);
+    } else {
+      console.log(`✅ RAG: Using cached proposal embedding (${proposalEmbedding.length} dimensions)`);
+    }
 
     const searchResult = await searchTemplatesByEmbedding(
       proposalEmbedding,
@@ -186,53 +211,15 @@ CONTRACT DETAILS:
 - Type: ${state.contractType}
 - Parties: ${state.parties.join(", ")}
 
-INSTRUCTIONS - Follow these carefully:
+INSTRUCTIONS:
+1. Extract ALL requirements from proposal and address comprehensively
+2. Follow template structure with proper legal formatting (numbered sections)
+3. Include standard clauses: Purpose, Definitions, Responsibilities, Payment, Deliverables, Confidentiality, IP Rights, Warranties, Liability, Indemnification, Term/Termination, Dispute Resolution, Governing Law, Amendments, Entire Agreement, Signatures
+4. Replace placeholders with actual party names
+5. Use formal legal terminology; ensure legal soundness
+6. Generate complete detailed contract (not outline)
 
-1. **Extract Key Points from Proposal**: Carefully analyze the business proposal and identify all key requirements, terms, obligations, and specifications mentioned.
-
-2. **Use Template Structure**: Follow the structure, clause organization, and legal language style from the reference template above.
-
-3. **Comprehensive Coverage**: Include ALL standard clauses for a ${state.contractType}, such as:
-   - Purpose/Scope of Agreement
-   - Definitions (if applicable)
-   - Roles & Responsibilities
-   - Payment Terms (if applicable)
-   - Deliverables & Timelines
-   - Confidentiality & Non-Disclosure
-   - Intellectual Property Rights
-   - Warranties & Representations
-   - Limitation of Liability
-   - Indemnification
-   - Term & Termination
-   - Dispute Resolution
-   - Governing Law
-   - Amendment & Modification
-   - Entire Agreement
-   - Signatures
-
-4. **Professional Formatting**:
-   - Use clear numbered sections (1., 2., 3., etc.)
-   - Use subsections where needed (1.1, 1.2, etc.)
-   - Include proper headings for each clause
-   - Use bullet points or numbered lists for multiple items
-   - Maintain consistent legal language throughout
-
-5. **Customization**:
-   - Replace ALL placeholders like [Party A], [Company Name], [Date] with actual party names or clear placeholders
-   - Incorporate specific terms, conditions, and requirements from the business proposal
-   - Add domain-specific clauses based on the contract type
-   - Ensure party names are used consistently
-
-6. **Legal Completeness**:
-   - Each clause should be legally sound and enforceable
-   - Include standard legal protections for both parties
-   - Add signature blocks at the end with proper formatting
-   - Use formal legal terminology appropriately
-
-7. **Length & Detail**: Generate a complete, detailed contract (not just an outline). Include full clause text, not summaries.
-
-OUTPUT FORMAT:
-Generate the contract in a clean, professional format with clear section headings, proper numbering, and complete clause text.
+OUTPUT: Professional ${state.contractType} contract with clear sections and complete clauses.
 
 Generate the complete ${state.contractType} contract now:`;
 
@@ -314,7 +301,15 @@ async function retrieveContractAndContext(
       }
 
       try {
-        const proposalEmbedding = await embeddings.embedQuery(state.proposalText);
+        // Check cache first to avoid regenerating embeddings
+        let proposalEmbedding = getCachedEmbedding(state.proposalText);
+        if (!proposalEmbedding) {
+          proposalEmbedding = await embeddings.embedQuery(state.proposalText);
+          setCachedEmbedding(state.proposalText, proposalEmbedding);
+          console.log('🔍 Validation: Generated new proposal embedding');
+        } else {
+          console.log('✅ Validation: Using cached proposal embedding');
+        }
         const searchResult = await searchTemplatesByEmbedding(
           proposalEmbedding,
           0.3,
@@ -373,7 +368,15 @@ async function retrieveContractAndContext(
     }
 
     try {
-      const proposalEmbedding = await embeddings.embedQuery(state.proposalText);
+      // Check cache first to avoid regenerating embeddings
+      let proposalEmbedding = getCachedEmbedding(state.proposalText);
+      if (!proposalEmbedding) {
+        proposalEmbedding = await embeddings.embedQuery(state.proposalText);
+        setCachedEmbedding(state.proposalText, proposalEmbedding);
+        console.log('🔍 Validation: Generated new proposal embedding');
+      } else {
+        console.log('✅ Validation: Using cached proposal embedding');
+      }
       const searchResult = await searchTemplatesByEmbedding(
         proposalEmbedding,
         0.3,  // Lowered to 30% for better matching
@@ -435,69 +438,27 @@ CONTRACT TO VALIDATE:
 ${state.contractContent}
 ${ragInfo}
 
-VALIDATION INSTRUCTIONS - Follow these steps carefully:
+VALIDATION INSTRUCTIONS:
 
-IMPORTANT: This contract may have been GENERATED from the proposal. If the contract properly addresses ALL requirements from the proposal, it should be marked as "compliant" even if the language is different or more formal.
+CRITICAL: Contract likely GENERATED from proposal. Mark "compliant" if ALL requirements addressed (different wording OK).
 
-1. **Requirements Coverage Analysis**:
-   - Extract all specific requirements, terms, and conditions from the business proposal
-   - Check if EACH requirement is substantially addressed in the contract
-   - A requirement is "addressed" if the contract covers the concept, even if wording differs
-   - Only flag as missing if completely absent or contradicted
+1. Requirements Coverage: Check each proposal requirement substantially addressed
+2. Compliance: Flag ONLY direct contradictions (e.g., "monthly" vs "quarterly")
+3. Completeness: Verify expected structure exists
+4. Issues: ERROR only for contradictions/missing critical items, WARNING for scope changes, INFO for suggestions
 
-2. **Compliance & Accuracy Check**:
-   - Verify that contract terms align with proposal intent
-   - Flag ONLY if there are direct contradictions (e.g., proposal says "monthly", contract says "quarterly")
-   - Different phrasing or more formal language is acceptable
-   - Allow for legal terminology that expresses the same concept
+DO NOT report: different wording, formal phrasing, standard clauses, reasonable interpretations
 
-3. **Reasonable Completeness**:
-   - Check if the contract has the expected structure for its type
-   - Standard legal clauses (termination, liability, etc.) are expected
-   - Only flag if critically important clauses are completely missing
-
-4. **Issue Categorization** (USE SPARINGLY):
-   - **ERROR**: Only for direct contradictions or completely missing critical requirements
-   - **WARNING**: Deviations that change meaning or scope significantly  
-   - **INFO**: Minor suggestions for additional protection or clarity
-   
-   **DO NOT report issues for:**
-   - Different wording that means the same thing
-   - More formal/legal phrasing of proposal requirements
-   - Standard legal clauses not mentioned in proposal
-   - Reasonable interpretations of vague proposal language
-
-5. **Provide Actionable Feedback** (ONLY if real issues exist):
-   - Specify the EXACT section or clause affected
-   - Explain WHAT is genuinely wrong or contradictory
-   - Explain WHY it fails to meet the proposal requirement
-   - Suggest HOW to fix it
-
-OUTPUT FORMAT - Return ONLY valid JSON (no markdown, no extra text):
+OUTPUT: Valid JSON only
 {
   "status": "compliant" | "issues_found" | "failed",
-  "summary": "2-3 sentence comprehensive summary. If compliant, state that the contract properly addresses all proposal requirements.",
-  "issues": [
-    {
-      "type": "error" | "warning" | "info",
-      "section": "Specific section/clause name",
-      "message": "Detailed description of the GENUINE issue with actionable fix"
-    }
-  ]
+  "summary": "2-3 sentences",
+  "issues": [{"type": "error|warning|info", "section": "...", "message": "..."}]
 }
 
-CRITICAL REQUIREMENTS:
-- If the contract addresses all proposal requirements (even in different words), return status "compliant" with empty issues array
-- Only return "issues_found" if there are GENUINE problems (contradictions or missing requirements)
-- Use status "failed" only if the contract is fundamentally broken
-- DO NOT invent issues just to fill the array
-- Empty issues array is perfectly acceptable for a good contract
-- Be lenient with phrasing differences - focus on substance, not style
-
-EXAMPLE OF CORRECT BEHAVIOR:
-- Proposal: "2 year term" → Contract: "Term shall be twenty-four (24) months" → COMPLIANT
-- Proposal: "monthly payments" → Contract: "Payment due quarterly" → ERROR (contradiction)
-- Proposal: "NDA agreement" → Contract contains full NDA clauses → COMPLIANT
+EXAMPLES:
+- Proposal: "2 year term" → Contract: "24 months" → COMPLIANT
+- Proposal: "monthly pay" → Contract: "quarterly pay" → ERROR
 
 Return your response now:`;
 
