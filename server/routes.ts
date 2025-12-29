@@ -127,6 +127,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       console.log(`Validating contract: ${contractId}`);
+      console.log(`Proposal length: ${proposalText.length} characters`);
+      
+      // Verify contract exists before validation
+      const contract = await storage.getContract(contractId);
+      if (!contract) {
+        console.error(`Contract not found: ${contractId}`);
+        return res.status(404).json({ error: `Contract ${contractId} not found` });
+      }
+      
+      console.log(`Contract found: ${contract.title} (${contract.content.length} chars)`);
 
       const result = await validationWorkflow.invoke({
         contractId,
@@ -157,6 +167,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       console.log(`Validation ${validation.id} created for contract ${contractId}`);
+      console.log(`Validation status: ${result.validationResult.status}`);
+      console.log(`Issues found: ${result.validationResult.issues?.length || 0}`);
 
       res.json(result.validationResult);
     } catch (error) {
@@ -203,7 +215,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         relevantContext: [],
         useRag: false,
         validationResult: null,
-        step: "retrieve", // Start from retrieve step (it will detect contractContent is already provided)
+        step: "retrieve", // Start from retrieve (it will detect content is already provided)
         error: null,
       });
 
@@ -397,7 +409,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             name: "Google Gemini",
             description: "Free cloud API with quota limits",
             models: {
-              llm: "gemini-pro",
+              llm: "gemini-1.5-flash",
               embedding: "embedding-001"
             }
           }
@@ -406,6 +418,54 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("GET /api/settings/llm-provider error:", error);
       res.status(500).json({ error: "Failed to fetch LLM provider settings" });
+    }
+  });
+
+  // DELETE contract endpoint
+  app.delete("/api/contracts/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      
+      console.log(`Deleting contract: ${id}`);
+      
+      const contract = await storage.getContract(id);
+      if (!contract) {
+        return res.status(404).json({ error: "Contract not found" });
+      }
+      
+      await storage.deleteContract(id);
+      console.log(`Contract ${id} deleted successfully`);
+      
+      res.json({ success: true, message: "Contract deleted successfully" });
+    } catch (error) {
+      console.error("DELETE /api/contracts/:id error:", error);
+      res.status(500).json({ 
+        error: error instanceof Error ? error.message : "Failed to delete contract" 
+      });
+    }
+  });
+
+  // DELETE template endpoint
+  app.delete("/api/templates/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      
+      console.log(`Deleting template: ${id}`);
+      
+      const template = await storage.getTemplate(id);
+      if (!template) {
+        return res.status(404).json({ error: "Template not found" });
+      }
+      
+      await storage.deleteTemplate(id);
+      console.log(`Template ${id} deleted successfully`);
+      
+      res.json({ success: true, message: "Template deleted successfully" });
+    } catch (error) {
+      console.error("DELETE /api/templates/:id error:", error);
+      res.status(500).json({ 
+        error: error instanceof Error ? error.message : "Failed to delete template" 
+      });
     }
   });
 

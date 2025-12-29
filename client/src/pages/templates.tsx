@@ -27,7 +27,13 @@ import {
   TabsList,
   TabsTrigger,
 } from "@/components/ui/tabs";
-import { Files, Upload, Search, Plus, FileText } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Files, Upload, Search, Plus, FileText, MoreVertical, Trash2 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { useForm } from "react-hook-form";
@@ -174,6 +180,32 @@ export default function Templates() {
     const file = e.target.files?.[0];
     if (file) {
       setSelectedFile(file);
+    }
+  };
+
+  const deleteMutation = useMutation({
+    mutationFn: async (templateId: string) => {
+      return await apiRequest("DELETE", `/api/templates/${templateId}`, {});
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/templates"] });
+      toast({
+        title: "Template deleted",
+        description: "The template has been deleted successfully.",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Delete failed",
+        description: error.message || "Failed to delete template. Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleDelete = async (template: Template) => {
+    if (confirm(`Are you sure you want to delete "${template.title}"? This action cannot be undone.`)) {
+      deleteMutation.mutate(template.id);
     }
   };
 
@@ -459,15 +491,33 @@ export default function Templates() {
             <Card key={template.id} className="hover-elevate" data-testid={`template-card-${template.id}`}>
               <CardHeader>
                 <div className="flex items-start justify-between gap-2">
-                  <Files className="h-5 w-5 text-primary flex-shrink-0 mt-1" />
-                  <div className="flex-1 min-w-0">
-                    <CardTitle className="text-lg mb-2" data-testid={`template-title-${template.id}`}>
-                      {template.title}
-                    </CardTitle>
-                    <Badge variant="secondary" className="text-xs">
-                      {template.category.replace("_", " ")}
-                    </Badge>
+                  <div className="flex items-start gap-2 flex-1">
+                    <Files className="h-5 w-5 text-primary flex-shrink-0 mt-1" />
+                    <div className="flex-1 min-w-0">
+                      <CardTitle className="text-lg mb-2" data-testid={`template-title-${template.id}`}>
+                        {template.title}
+                      </CardTitle>
+                      <Badge variant="secondary" className="text-xs">
+                        {template.category.replace("_", " ")}
+                      </Badge>
+                    </div>
                   </div>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="icon" data-testid={`button-template-menu-${template.id}`}>
+                        <MoreVertical className="h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem
+                        className="text-destructive"
+                        onClick={() => handleDelete(template)}
+                      >
+                        <Trash2 className="h-4 w-4 mr-2" />
+                        Delete
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </div>
               </CardHeader>
               <CardContent>

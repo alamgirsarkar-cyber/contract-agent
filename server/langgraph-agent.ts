@@ -32,7 +32,7 @@ if (LLM_PROVIDER === "ollama") {
   const geminiApiKey = process.env.GEMINI_API_KEY || "";
 
   llm = new ChatGoogleGenerativeAI({
-    model: "gemini-pro",
+    model: "gemini-1.5-flash",
     temperature: 0.7,
     apiKey: geminiApiKey,
   });
@@ -43,6 +43,24 @@ if (LLM_PROVIDER === "ollama") {
   });
 } else {
   throw new Error(`Unknown LLM_PROVIDER: ${LLM_PROVIDER}. Use "ollama" or "gemini"`);
+}
+
+// Embedding cache to avoid regenerating embeddings for same proposal
+const embeddingCache = new Map<string, number[]>();
+const CACHE_MAX_SIZE = 100;
+
+function getCachedEmbedding(text: string): number[] | null {
+  const cacheKey = text.substring(0, 500); // Use first 500 chars as key
+  return embeddingCache.get(cacheKey) || null;
+}
+
+function setCachedEmbedding(text: string, embedding: number[]): void {
+  const cacheKey = text.substring(0, 500);
+  if (embeddingCache.size >= CACHE_MAX_SIZE) {
+    const firstKey = embeddingCache.keys().next().value;
+    embeddingCache.delete(firstKey);
+  }
+  embeddingCache.set(cacheKey, embedding);
 }
 
 const ContractGenerationState = Annotation.Root({
@@ -84,8 +102,15 @@ async function retrieveTemplates(
       };
     }
 
-    const proposalEmbedding = await embeddings.embedQuery(state.proposal);
-    console.log(`🔍 RAG: Generated proposal embedding (${proposalEmbedding.length} dimensions)`);
+    // Check cache first to avoid regenerating embeddings
+    let proposalEmbedding = getCachedEmbedding(state.proposal);
+    if (!proposalEmbedding) {
+      proposalEmbedding = await embeddings.embedQuery(state.proposal);
+      setCachedEmbedding(state.proposal, proposalEmbedding);
+      console.log(`🔍 RAG: Generated new proposal embedding (${proposalEmbedding.length} dimensions)`);
+    } else {
+      console.log(`✅ RAG: Using cached proposal embedding (${proposalEmbedding.length} dimensions)`);
+    }
 
     const searchResult = await searchTemplatesByEmbedding(
       proposalEmbedding,
@@ -186,53 +211,15 @@ CONTRACT DETAILS:
 - Type: ${state.contractType}
 - Parties: ${state.parties.join(", ")}
 
-INSTRUCTIONS - Follow these carefully:
+INSTRUCTIONS:
+1. Extract ALL requirements from proposal and address comprehensively
+2. Follow template structure with proper legal formatting (numbered sections)
+3. Include standard clauses: Purpose, Definitions, Responsibilities, Payment, Deliverables, Confidentiality, IP Rights, Warranties, Liability, Indemnification, Term/Termination, Dispute Resolution, Governing Law, Amendments, Entire Agreement, Signatures
+4. Replace placeholders with actual party names
+5. Use formal legal terminology; ensure legal soundness
+6. Generate complete detailed contract (not outline)
 
-1. **Extract Key Points from Proposal**: Carefully analyze the business proposal and identify all key requirements, terms, obligations, and specifications mentioned.
-
-2. **Use Template Structure**: Follow the structure, clause organization, and legal language style from the reference template above.
-
-3. **Comprehensive Coverage**: Include ALL standard clauses for a ${state.contractType}, such as:
-   - Purpose/Scope of Agreement
-   - Definitions (if applicable)
-   - Roles & Responsibilities
-   - Payment Terms (if applicable)
-   - Deliverables & Timelines
-   - Confidentiality & Non-Disclosure
-   - Intellectual Property Rights
-   - Warranties & Representations
-   - Limitation of Liability
-   - Indemnification
-   - Term & Termination
-   - Dispute Resolution
-   - Governing Law
-   - Amendment & Modification
-   - Entire Agreement
-   - Signatures
-
-4. **Professional Formatting**:
-   - Use clear numbered sections (1., 2., 3., etc.)
-   - Use subsections where needed (1.1, 1.2, etc.)
-   - Include proper headings for each clause
-   - Use bullet points or numbered lists for multiple items
-   - Maintain consistent legal language throughout
-
-5. **Customization**:
-   - Replace ALL placeholders like [Party A], [Company Name], [Date] with actual party names or clear placeholders
-   - Incorporate specific terms, conditions, and requirements from the business proposal
-   - Add domain-specific clauses based on the contract type
-   - Ensure party names are used consistently
-
-6. **Legal Completeness**:
-   - Each clause should be legally sound and enforceable
-   - Include standard legal protections for both parties
-   - Add signature blocks at the end with proper formatting
-   - Use formal legal terminology appropriately
-
-7. **Length & Detail**: Generate a complete, detailed contract (not just an outline). Include full clause text, not summaries.
-
-OUTPUT FORMAT:
-Generate the contract in a clean, professional format with clear section headings, proper numbering, and complete clause text.
+OUTPUT: Professional ${state.contractType} contract with clear sections and complete clauses.
 
 Generate the complete ${state.contractType} contract now:`;
 
@@ -296,10 +283,12 @@ async function retrieveContractAndContext(
   state: typeof ValidationState.State
 ): Promise<Partial<typeof ValidationState.State>> {
   try {
-    // If contractContent is already provided (from file upload), skip retrieval
+    // IMPORTANT: Check if contractContent is already provided (from file upload)
+    // If so, skip database retrieval and just handle RAG context
     if (state.contractContent) {
-      console.log("Contract content already provided (uploaded file), skipping retrieval");
+      console.log("Contract content already provided (uploaded file), skipping database retrieval");
 
+      // Try to get RAG context for better validation
       if (!checkSupabaseAvailability()) {
         console.warn("Supabase not available, validating without RAG context");
         return {
@@ -312,7 +301,15 @@ async function retrieveContractAndContext(
       }
 
       try {
-        const proposalEmbedding = await embeddings.embedQuery(state.proposalText);
+        // Check cache first to avoid regenerating embeddings
+        let proposalEmbedding = getCachedEmbedding(state.proposalText);
+        if (!proposalEmbedding) {
+          proposalEmbedding = await embeddings.embedQuery(state.proposalText);
+          setCachedEmbedding(state.proposalText, proposalEmbedding);
+          console.log('🔍 Validation: Generated new proposal embedding');
+        } else {
+          console.log('✅ Validation: Using cached proposal embedding');
+        }
         const searchResult = await searchTemplatesByEmbedding(
           proposalEmbedding,
           0.3,
@@ -349,7 +346,7 @@ async function retrieveContractAndContext(
       }
     }
 
-    // Otherwise, retrieve contract by ID
+    // Otherwise, retrieve contract from database by ID
     if (!state.contractId) {
       return { error: "Contract ID or content must be provided", step: "error" };
     }
@@ -371,7 +368,15 @@ async function retrieveContractAndContext(
     }
 
     try {
-      const proposalEmbedding = await embeddings.embedQuery(state.proposalText);
+      // Check cache first to avoid regenerating embeddings
+      let proposalEmbedding = getCachedEmbedding(state.proposalText);
+      if (!proposalEmbedding) {
+        proposalEmbedding = await embeddings.embedQuery(state.proposalText);
+        setCachedEmbedding(state.proposalText, proposalEmbedding);
+        console.log('🔍 Validation: Generated new proposal embedding');
+      } else {
+        console.log('✅ Validation: Using cached proposal embedding');
+      }
       const searchResult = await searchTemplatesByEmbedding(
         proposalEmbedding,
         0.3,  // Lowered to 30% for better matching
@@ -424,49 +429,78 @@ async function validateContract(
 ${state.relevantContext.length} similar legal template(s) were analyzed for validation context.`
       : "\n\n(Validation performed without RAG context)";
 
-    const prompt = `You are a legal contract validation assistant. Validate the following contract against the business proposal.
+    const prompt = `You are an expert legal contract validation assistant. Perform a comprehensive validation of the contract against the business proposal requirements.
 
-BUSINESS PROPOSAL:
+BUSINESS PROPOSAL / REQUIREMENTS:
 ${state.proposalText}
 
 CONTRACT TO VALIDATE:
 ${state.contractContent}
 ${ragInfo}
 
-Instructions:
-1. Check if all requirements from the proposal are addressed in the contract
-2. Identify any missing clauses or terms
-3. Flag any contradictions or compliance issues
-4. Compare against standard legal practices for completeness
-5. Suggest improvements where applicable
-6. Categorize issues as: error (critical), warning (important), or info (suggestion)
+VALIDATION INSTRUCTIONS:
 
-Respond with a JSON object in this format:
+STEP 1 - TYPE COMPATIBILITY CHECK (CRITICAL):
+First, determine if the contract TYPE and SUBJECT MATTER match the proposal TYPE and SUBJECT MATTER.
+
+Examples of TYPE MISMATCHES (must return "failed" status):
+- Proposal: Employment/hiring → Contract: Service agreement → FAILED (incompatible types)
+- Proposal: B2B service delivery → Contract: Employment contract → FAILED (incompatible types)
+- Proposal: NDA/confidentiality → Contract: Purchase agreement → FAILED (incompatible types)
+
+If the contract type does NOT match the proposal type/subject, return status "failed" with error explaining the type mismatch.
+
+STEP 2 - REQUIREMENT VALIDATION (only if types match):
+If contract type matches proposal type, validate requirements:
+
+1. Requirements Coverage: Check each proposal requirement substantially addressed
+2. Compliance: Flag ONLY direct contradictions (e.g., "monthly" vs "quarterly")
+3. Completeness: Verify expected structure exists
+4. Issues: ERROR only for contradictions/missing critical items, WARNING for scope changes, INFO for suggestions
+
+DO NOT report: different wording, formal phrasing, standard clauses, reasonable interpretations
+
+OUTPUT: Valid JSON only
 {
   "status": "compliant" | "issues_found" | "failed",
-  "summary": "Brief summary of validation results",
-  "issues": [
-    {
-      "type": "error" | "warning" | "info",
-      "section": "Section name if applicable",
-      "message": "Detailed description of the issue or suggestion"
-    }
-  ]
-}`;
+  "summary": "2-3 sentences",
+  "issues": [{"type": "error|warning|info", "section": "...", "message": "..."}]
+}
+
+EXAMPLES:
+- Proposal: Employment for "Software Engineer" → Contract: Employment for "Marketing Manager" → ERROR (wrong role)
+- Proposal: "2 year term" → Contract: "24 months" → COMPLIANT (same meaning)
+- Proposal: "monthly pay" → Contract: "quarterly pay" → ERROR (direct contradiction)
+- Proposal: Service agreement between companies → Contract: Employment contract → FAILED (type mismatch)
+
+Return your response now:`;
 
     const response = await llm.invoke(prompt + "\n\nProvide your response as valid JSON only, with no additional text.");
 
     const responseText = response.content.toString();
+    console.log('Validation LLM response length:', responseText.length);
+    
     // Extract JSON from response (Gemini sometimes wraps it in markdown)
     const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-    const validationResult = jsonMatch ? JSON.parse(jsonMatch[0]) : JSON.parse(responseText);
+    if (!jsonMatch) {
+      console.error('Failed to extract JSON from response:', responseText.substring(0, 200));
+      throw new Error('Invalid validation response format');
+    }
+    
+    const validationResult = JSON.parse(jsonMatch[0]);
+    console.log('Validation result status:', validationResult.status);
+    console.log('Issues count:', validationResult.issues?.length || 0);
 
-    const newStatus = validationResult.status === "compliant" ? "validated" :
-                      validationResult.status === "issues_found" ? "pending" : "draft";
-    
-    await storage.updateContract(state.contractId, { status: newStatus });
-    
-    console.log(`Contract ${state.contractId} validated: ${validationResult.status} (RAG: ${state.useRag})`);
+    // Only update contract status if we have a contract ID (not for uploaded files)
+    if (state.contractId) {
+      const newStatus = validationResult.status === "compliant" ? "validated" :
+                        validationResult.status === "issues_found" ? "pending" : "draft";
+
+      await storage.updateContract(state.contractId, { status: newStatus });
+      console.log(`Contract ${state.contractId} validated: ${validationResult.status} (RAG: ${state.useRag})`);
+    } else {
+      console.log(`Uploaded file validated: ${validationResult.status} (RAG: ${state.useRag})`);
+    }
 
     return {
       validationResult,

@@ -116,16 +116,72 @@ export default function Validate() {
       setValidationResult(data);
       setFeedback(null);
       setFeedbackComment("");
-      toast({
-        title: "Validation complete",
-        description: "Contract has been validated against the business proposal.",
-      });
+
+      // Scroll to results section smoothly
+      setTimeout(() => {
+        document.getElementById('validation-results')?.scrollIntoView({
+          behavior: 'smooth',
+          block: 'start'
+        });
+      }, 300);
+
+      // Show different toast based on validation status
+      if (data.status === "compliant") {
+        toast({
+          title: "✅ Contract Validated Successfully!",
+          description: (
+            <div className="space-y-2">
+              <p className="font-medium">Your contract is fully compliant with the business proposal.</p>
+              <p className="text-sm">✓ All requirements are properly addressed</p>
+              <p className="text-sm">✓ No issues found</p>
+              <p className="text-sm text-muted-foreground mt-2">Scroll down to see the full validation report.</p>
+            </div>
+          ),
+          className: "bg-green-50 dark:bg-green-950 border-green-200 dark:border-green-800",
+          duration: 6000,
+        });
+      } else if (data.status === "issues_found") {
+        const issueCount = data.issues?.length || 0;
+        const errorCount = data.issues?.filter(i => i.type === "error").length || 0;
+        const warningCount = data.issues?.filter(i => i.type === "warning").length || 0;
+        const infoCount = data.issues?.filter(i => i.type === "info").length || 0;
+
+        toast({
+          title: "⚠️ Validation Complete - Issues Found",
+          description: (
+            <div className="space-y-2">
+              <p className="font-medium">Found {issueCount} issue(s):</p>
+              <ul className="text-sm space-y-1">
+                {errorCount > 0 && <li>🔴 {errorCount} Critical Error(s)</li>}
+                {warningCount > 0 && <li>🟡 {warningCount} Warning(s)</li>}
+                {infoCount > 0 && <li>🔵 {infoCount} Suggestion(s)</li>}
+              </ul>
+              <p className="text-sm text-muted-foreground mt-2">Scroll down to review detailed issues and recommendations.</p>
+            </div>
+          ),
+          variant: "destructive",
+          duration: 8000,
+        });
+      } else {
+        toast({
+          title: "❌ Validation Failed",
+          description: (
+            <div className="space-y-2">
+              <p className="font-medium">The contract has critical issues that need immediate attention.</p>
+              <p className="text-sm text-muted-foreground">Please review the validation report below for details.</p>
+            </div>
+          ),
+          variant: "destructive",
+          duration: 6000,
+        });
+      }
     },
     onError: (error: Error) => {
       toast({
-        title: "Validation failed",
-        description: error.message,
+        title: "❌ Validation Error",
+        description: `Failed to validate contract: ${error.message}. Please check your inputs and try again.`,
         variant: "destructive",
+        duration: 5000,
       });
     },
   });
@@ -142,14 +198,23 @@ export default function Validate() {
         validationResult,
       });
 
+      const feedbackMessage = feedback === "approved"
+        ? "Your approval has been recorded. This helps us improve our validation quality!"
+        : "Your feedback helps us improve. Thank you for the detailed review!";
+
       toast({
-        title: "Feedback submitted",
-        description: "Thank you for your feedback!",
+        title: `✅ Feedback ${feedback === "approved" ? "Approved" : "Submitted"}`,
+        description: feedbackMessage,
+        className: "bg-green-50 dark:bg-green-950 border-green-200 dark:border-green-800",
       });
+
+      // Reset feedback after successful submission
+      setFeedback(null);
+      setFeedbackComment("");
     } catch (error) {
       toast({
-        title: "Failed to submit feedback",
-        description: error instanceof Error ? error.message : "Unknown error",
+        title: "❌ Failed to Submit Feedback",
+        description: error instanceof Error ? error.message : "An error occurred. Please try again.",
         variant: "destructive",
       });
     }
@@ -325,7 +390,7 @@ export default function Validate() {
       </div>
 
       {validationResult && (
-        <Card>
+        <Card id="validation-results">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               {validationResult.status === "compliant" ? (

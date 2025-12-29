@@ -98,7 +98,7 @@ graph TB
             GEMINI[Gemini Provider<br/>Google AI API<br/>Cloud inference]
         end
         subgraph "Model Configurations"
-            LLM_MODELS[Language Models<br/>llama3.1:8b (Ollama)<br/>gemini-pro (Gemini)]
+            LLM_MODELS[Language Models<br/>llama3.1:8b (Ollama)<br/>gemini-1.5-flash (Gemini)]
             EMB_MODELS[Embedding Models<br/>nomic-embed-text (Ollama)<br/>embedding-001 (Gemini)]
         end
         subgraph "Vector Operations"
@@ -466,7 +466,7 @@ const ollamaConfig = {
 const geminiConfig = {
   apiKey: process.env.GEMINI_API_KEY,
   models: {
-    llm: "gemini-pro",
+    llm: "gemini-1.5-flash",
     embedding: "embedding-001"
   },
   parameters: {
