@@ -713,7 +713,7 @@ The application supports two LLM providers:
 
 **Google Gemini (Alternative):**
 - Cloud API (free tier: 60 req/min)
-- Model: `gemini-pro`
+- Model: `gemini-1.5-flash`
 - Embeddings: `embedding-001` (768 dimensions)
 - Requires `GEMINI_API_KEY`
 

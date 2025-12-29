@@ -32,7 +32,7 @@ if (LLM_PROVIDER === "ollama") {
   const geminiApiKey = process.env.GEMINI_API_KEY || "";
 
   llm = new ChatGoogleGenerativeAI({
-    model: "gemini-pro",
+    model: "gemini-1.5-flash",
     temperature: 0.7,
     apiKey: geminiApiKey,
   });
@@ -440,7 +440,18 @@ ${ragInfo}
 
 VALIDATION INSTRUCTIONS:
 
-CRITICAL: Contract likely GENERATED from proposal. Mark "compliant" if ALL requirements addressed (different wording OK).
+STEP 1 - TYPE COMPATIBILITY CHECK (CRITICAL):
+First, determine if the contract TYPE and SUBJECT MATTER match the proposal TYPE and SUBJECT MATTER.
+
+Examples of TYPE MISMATCHES (must return "failed" status):
+- Proposal: Employment/hiring → Contract: Service agreement → FAILED (incompatible types)
+- Proposal: B2B service delivery → Contract: Employment contract → FAILED (incompatible types)
+- Proposal: NDA/confidentiality → Contract: Purchase agreement → FAILED (incompatible types)
+
+If the contract type does NOT match the proposal type/subject, return status "failed" with error explaining the type mismatch.
+
+STEP 2 - REQUIREMENT VALIDATION (only if types match):
+If contract type matches proposal type, validate requirements:
 
 1. Requirements Coverage: Check each proposal requirement substantially addressed
 2. Compliance: Flag ONLY direct contradictions (e.g., "monthly" vs "quarterly")
@@ -457,8 +468,10 @@ OUTPUT: Valid JSON only
 }
 
 EXAMPLES:
-- Proposal: "2 year term" → Contract: "24 months" → COMPLIANT
-- Proposal: "monthly pay" → Contract: "quarterly pay" → ERROR
+- Proposal: Employment for "Software Engineer" → Contract: Employment for "Marketing Manager" → ERROR (wrong role)
+- Proposal: "2 year term" → Contract: "24 months" → COMPLIANT (same meaning)
+- Proposal: "monthly pay" → Contract: "quarterly pay" → ERROR (direct contradiction)
+- Proposal: Service agreement between companies → Contract: Employment contract → FAILED (type mismatch)
 
 Return your response now:`;
 
