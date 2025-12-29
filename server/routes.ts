@@ -409,7 +409,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             name: "Google Gemini",
             description: "Free cloud API with quota limits",
             models: {
-              llm: "gemini-1.5-flash",
+              llm: "gemini-2.5-flash",
               embedding: "embedding-001"
             }
           }

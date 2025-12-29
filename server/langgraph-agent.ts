@@ -32,7 +32,7 @@ if (LLM_PROVIDER === "ollama") {
   const geminiApiKey = process.env.GEMINI_API_KEY || "";
 
   llm = new ChatGoogleGenerativeAI({
-    model: "gemini-1.5-flash",
+    model: "gemini-2.5-flash",
     temperature: 0.7,
     apiKey: geminiApiKey,
   });
