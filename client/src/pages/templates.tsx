@@ -233,7 +233,13 @@ export default function Templates() {
               </DialogDescription>
             </DialogHeader>
 
-            <Tabs defaultValue="file" className="w-full" onValueChange={(value) => setUploadMode(value as "file" | "manual")}>
+            <Tabs defaultValue="file" className="w-full" onValueChange={(value) => {
+              setUploadMode(value as "file" | "manual");
+              // Clear form state when switching tabs
+              setSelectedFile(null);
+              setFileUploadData({ title: "", category: "other", description: "" });
+              form.reset();
+            }}>
               <TabsList className="grid w-full grid-cols-2">
                 <TabsTrigger value="file">
                   <Upload className="h-4 w-4 mr-2" />

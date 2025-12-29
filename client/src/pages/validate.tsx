@@ -262,7 +262,13 @@ export default function Validate() {
             <CardTitle>Contract to Validate</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <Tabs value={contractSource} onValueChange={(v) => setContractSource(v as "existing" | "upload")}>
+            <Tabs value={contractSource} onValueChange={(v) => {
+              setContractSource(v as "existing" | "upload");
+              // Clear validation state when switching tabs
+              setValidationResult(null);
+              setFeedback(null);
+              setFeedbackComment("");
+            }}>
               <TabsList className="grid w-full grid-cols-2">
                 <TabsTrigger value="existing">Existing Contract</TabsTrigger>
                 <TabsTrigger value="upload">Upload File</TabsTrigger>
