@@ -330,18 +330,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const template = await storage.createTemplate(validatedData);
 
-      // Generate and store embedding
+      // Generate and store embedding (with quota error handling)
       try {
         const embedding = await generateEmbedding(parseResult.content);
-        const storeResult = await storeTemplateEmbedding(template.id, parseResult.content, embedding);
 
-        if (storeResult.success) {
-          console.log(`✅ Template ${template.id} embedded and stored in Supabase vector database`);
+        if (embedding) {
+          const storeResult = await storeTemplateEmbedding(template.id, parseResult.content, embedding);
+
+          if (storeResult.success) {
+            console.log(`✅ Template ${template.id} embedded and stored in Supabase vector database`);
+          } else {
+            console.warn(`⚠️ Embedding storage failed for ${template.id}: ${storeResult.error}`);
+          }
         } else {
-          console.error(`❌ Embedding storage failed for ${template.id}: ${storeResult.error}`);
+          console.warn(`⚠️ Embedding generation skipped for ${template.id} (quota/rate limit)`);
         }
       } catch (embeddingError) {
-        console.error(`❌ Failed to generate/store embedding for ${template.id}:`, embeddingError);
+        console.warn(`⚠️ Failed to generate/store embedding for ${template.id}:`, embeddingError);
       }
 
       res.status(201).json(template);
@@ -361,15 +366,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       try {
         const embedding = await generateEmbedding(validatedData.content);
-        const storeResult = await storeTemplateEmbedding(template.id, validatedData.content, embedding);
 
-        if (storeResult.success) {
-          console.log(`Template ${template.id} embedded and stored in Supabase vector database`);
+        if (embedding) {
+          const storeResult = await storeTemplateEmbedding(template.id, validatedData.content, embedding);
+
+          if (storeResult.success) {
+            console.log(`✅ Template ${template.id} embedded and stored in Supabase vector database`);
+          } else {
+            console.warn(`⚠️ Template ${template.id} created but embedding storage failed: ${storeResult.error}`);
+          }
         } else {
-          console.warn(`Template ${template.id} created but embedding storage failed: ${storeResult.error}`);
+          console.warn(`⚠️ Embedding generation skipped for ${template.id} (quota/rate limit)`);
         }
       } catch (embeddingError) {
-        console.error("Failed to generate/store embedding:", embeddingError);
+        console.warn("⚠️ Failed to generate/store embedding:", embeddingError);
       }
 
       res.status(201).json(template);

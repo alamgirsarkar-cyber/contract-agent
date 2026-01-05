@@ -47,20 +47,84 @@ if (LLM_PROVIDER === "ollama") {
 
 // Embedding cache to avoid regenerating embeddings for same proposal
 const embeddingCache = new Map<string, number[]>();
-const CACHE_MAX_SIZE = 100;
+const CACHE_MAX_SIZE = 500; // Increased cache size to reduce API calls
+
+// Track embedding call timestamps for rate limiting
+const embeddingCallTimestamps: number[] = [];
+const EMBEDDING_RATE_LIMIT = 10; // Max 10 calls per minute
+const RATE_LIMIT_WINDOW = 60000; // 1 minute in milliseconds
+
+// Simple hash function for better cache keys
+function hashString(str: string): string {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash; // Convert to 32bit integer
+  }
+  return hash.toString(36);
+}
 
 function getCachedEmbedding(text: string): number[] | null {
-  const cacheKey = text.substring(0, 500); // Use first 500 chars as key
+  const cacheKey = hashString(text); // Use hash for better cache hit rate
   return embeddingCache.get(cacheKey) || null;
 }
 
 function setCachedEmbedding(text: string, embedding: number[]): void {
-  const cacheKey = text.substring(0, 500);
+  const cacheKey = hashString(text);
   if (embeddingCache.size >= CACHE_MAX_SIZE) {
-    const firstKey = embeddingCache.keys().next().value;
-    embeddingCache.delete(firstKey);
+    // Remove oldest entries (LRU-style)
+    const keysToDelete = Array.from(embeddingCache.keys()).slice(0, 50);
+    keysToDelete.forEach(key => embeddingCache.delete(key));
   }
   embeddingCache.set(cacheKey, embedding);
+}
+
+// Check if we're within rate limits
+function canMakeEmbeddingCall(): boolean {
+  const now = Date.now();
+  // Remove timestamps older than the rate limit window
+  while (embeddingCallTimestamps.length > 0 && embeddingCallTimestamps[0] < now - RATE_LIMIT_WINDOW) {
+    embeddingCallTimestamps.shift();
+  }
+  return embeddingCallTimestamps.length < EMBEDDING_RATE_LIMIT;
+}
+
+function recordEmbeddingCall(): void {
+  embeddingCallTimestamps.push(Date.now());
+}
+
+// Wrapper for embeddings with quota error handling
+async function safeEmbedQuery(text: string): Promise<{ success: boolean; embedding?: number[]; error?: string }> {
+  try {
+    // Check cache first
+    const cached = getCachedEmbedding(text);
+    if (cached) {
+      console.log('✅ Using cached embedding');
+      return { success: true, embedding: cached };
+    }
+
+    // Check rate limit
+    if (!canMakeEmbeddingCall()) {
+      console.warn('⚠️ Rate limit reached, skipping embedding generation');
+      return { success: false, error: 'Rate limit reached' };
+    }
+
+    // Make API call
+    recordEmbeddingCall();
+    const embedding = await embeddings.embedQuery(text);
+    setCachedEmbedding(text, embedding);
+    console.log(`🔍 Generated new embedding (${embedding.length} dimensions)`);
+    return { success: true, embedding };
+  } catch (error: any) {
+    // Check if it's a quota error
+    if (error?.status === 429 || error?.message?.includes('quota') || error?.message?.includes('Too Many Requests')) {
+      console.warn('⚠️ Quota exceeded, falling back to non-RAG mode');
+      return { success: false, error: 'Quota exceeded' };
+    }
+    console.error('Embedding generation error:', error);
+    return { success: false, error: error?.message || 'Unknown error' };
+  }
 }
 
 const ContractGenerationState = Annotation.Root({
@@ -102,18 +166,25 @@ async function retrieveTemplates(
       };
     }
 
-    // Check cache first to avoid regenerating embeddings
-    let proposalEmbedding = getCachedEmbedding(state.proposal);
-    if (!proposalEmbedding) {
-      proposalEmbedding = await embeddings.embedQuery(state.proposal);
-      setCachedEmbedding(state.proposal, proposalEmbedding);
-      console.log(`🔍 RAG: Generated new proposal embedding (${proposalEmbedding.length} dimensions)`);
-    } else {
-      console.log(`✅ RAG: Using cached proposal embedding (${proposalEmbedding.length} dimensions)`);
+    // Use safe embedding query with quota error handling
+    const embeddingResult = await safeEmbedQuery(state.proposal);
+
+    if (!embeddingResult.success || !embeddingResult.embedding) {
+      console.warn(`⚠️ RAG embedding failed: ${embeddingResult.error}. Falling back to first template.`);
+      await storage.incrementTemplateUsage(allTemplates[0].id);
+
+      return {
+        templateContent: allTemplates[0].content,
+        templateId: allTemplates[0].id,
+        relevantTemplates: [],
+        useRag: false,
+        step: "generate",
+        error: null,
+      };
     }
 
     const searchResult = await searchTemplatesByEmbedding(
-      proposalEmbedding,
+      embeddingResult.embedding,
       0.3,  // Lowered to 30% for better matching
       5
     );
@@ -121,9 +192,9 @@ async function retrieveTemplates(
     if (!searchResult.success || searchResult.data.length === 0) {
       console.warn(`⚠️ RAG search failed or no matches: ${searchResult.error || 'No similar templates'}. Falling back to first template.`);
       console.log(`Available templates: ${allTemplates.length}, Supabase available: ${checkSupabaseAvailability()}`);
-      
+
       await storage.incrementTemplateUsage(allTemplates[0].id);
-      
+
       return {
         templateContent: allTemplates[0].content,
         templateId: allTemplates[0].id,
@@ -301,17 +372,22 @@ async function retrieveContractAndContext(
       }
 
       try {
-        // Check cache first to avoid regenerating embeddings
-        let proposalEmbedding = getCachedEmbedding(state.proposalText);
-        if (!proposalEmbedding) {
-          proposalEmbedding = await embeddings.embedQuery(state.proposalText);
-          setCachedEmbedding(state.proposalText, proposalEmbedding);
-          console.log('🔍 Validation: Generated new proposal embedding');
-        } else {
-          console.log('✅ Validation: Using cached proposal embedding');
+        // Use safe embedding query with quota error handling
+        const embeddingResult = await safeEmbedQuery(state.proposalText);
+
+        if (!embeddingResult.success || !embeddingResult.embedding) {
+          console.warn(`RAG embedding failed: ${embeddingResult.error}. Validating without context.`);
+          return {
+            contractContent: state.contractContent,
+            relevantContext: [],
+            useRag: false,
+            step: "validate",
+            error: null,
+          };
         }
+
         const searchResult = await searchTemplatesByEmbedding(
-          proposalEmbedding,
+          embeddingResult.embedding,
           0.3,
           3
         );
@@ -368,17 +444,22 @@ async function retrieveContractAndContext(
     }
 
     try {
-      // Check cache first to avoid regenerating embeddings
-      let proposalEmbedding = getCachedEmbedding(state.proposalText);
-      if (!proposalEmbedding) {
-        proposalEmbedding = await embeddings.embedQuery(state.proposalText);
-        setCachedEmbedding(state.proposalText, proposalEmbedding);
-        console.log('🔍 Validation: Generated new proposal embedding');
-      } else {
-        console.log('✅ Validation: Using cached proposal embedding');
+      // Use safe embedding query with quota error handling
+      const embeddingResult = await safeEmbedQuery(state.proposalText);
+
+      if (!embeddingResult.success || !embeddingResult.embedding) {
+        console.warn(`RAG embedding failed: ${embeddingResult.error}. Validating without context.`);
+        return {
+          contractContent: contract.content,
+          relevantContext: [],
+          useRag: false,
+          step: "validate",
+          error: null,
+        };
       }
+
       const searchResult = await searchTemplatesByEmbedding(
-        proposalEmbedding,
+        embeddingResult.embedding,
         0.3,  // Lowered to 30% for better matching
         3
       );
@@ -527,9 +608,9 @@ const validationGraph = new StateGraph(ValidationState)
 
 export const validationWorkflow = validationGraph.compile();
 
-export async function generateEmbedding(text: string): Promise<number[]> {
-  const embedding = await embeddings.embedQuery(text);
-  return embedding;
+export async function generateEmbedding(text: string): Promise<number[] | null> {
+  const result = await safeEmbedQuery(text);
+  return result.embedding || null;
 }
 
 export async function searchSimilarTemplates(
@@ -537,6 +618,10 @@ export async function searchSimilarTemplates(
   limit: number = 3
 ): Promise<any[]> {
   const queryEmbedding = await generateEmbedding(query);
+  if (!queryEmbedding) {
+    console.warn('Failed to generate embedding for search, returning empty results');
+    return [];
+  }
   const result = await searchTemplatesByEmbedding(queryEmbedding, 0.3, limit);  // Lowered to 30% for better matching
   return result.success ? result.data : [];
 }
