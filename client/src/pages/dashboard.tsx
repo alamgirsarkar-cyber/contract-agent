@@ -75,8 +75,8 @@ export default function Dashboard() {
                     {stat.value}
                   </div>
                   <div className="flex items-center gap-1 mt-2 text-xs text-muted-foreground">
-                    <TrendingUp className="h-3 w-3" />
-                    <span>{stat.trend} from last month</span>
+                    {/* <TrendingUp className="h-3 w-3" /> */}
+                    {/* <span>{stat.trend} from last month</span> */}
                   </div>
                 </>
               )}
