@@ -32,7 +32,7 @@ if (LLM_PROVIDER === "ollama") {
   const geminiApiKey = process.env.GEMINI_API_KEY || "";
 
   llm = new ChatGoogleGenerativeAI({
-    model: "gemini-pro",
+    model: "gemini-2.5-flash",
     temperature: 0.7,
     apiKey: geminiApiKey,
   });
@@ -43,6 +43,88 @@ if (LLM_PROVIDER === "ollama") {
   });
 } else {
   throw new Error(`Unknown LLM_PROVIDER: ${LLM_PROVIDER}. Use "ollama" or "gemini"`);
+}
+
+// Embedding cache to avoid regenerating embeddings for same proposal
+const embeddingCache = new Map<string, number[]>();
+const CACHE_MAX_SIZE = 500; // Increased cache size to reduce API calls
+
+// Track embedding call timestamps for rate limiting
+const embeddingCallTimestamps: number[] = [];
+const EMBEDDING_RATE_LIMIT = 10; // Max 10 calls per minute
+const RATE_LIMIT_WINDOW = 60000; // 1 minute in milliseconds
+
+// Simple hash function for better cache keys
+function hashString(str: string): string {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash; // Convert to 32bit integer
+  }
+  return hash.toString(36);
+}
+
+function getCachedEmbedding(text: string): number[] | null {
+  const cacheKey = hashString(text); // Use hash for better cache hit rate
+  return embeddingCache.get(cacheKey) || null;
+}
+
+function setCachedEmbedding(text: string, embedding: number[]): void {
+  const cacheKey = hashString(text);
+  if (embeddingCache.size >= CACHE_MAX_SIZE) {
+    // Remove oldest entries (LRU-style)
+    const keysToDelete = Array.from(embeddingCache.keys()).slice(0, 50);
+    keysToDelete.forEach(key => embeddingCache.delete(key));
+  }
+  embeddingCache.set(cacheKey, embedding);
+}
+
+// Check if we're within rate limits
+function canMakeEmbeddingCall(): boolean {
+  const now = Date.now();
+  // Remove timestamps older than the rate limit window
+  while (embeddingCallTimestamps.length > 0 && embeddingCallTimestamps[0] < now - RATE_LIMIT_WINDOW) {
+    embeddingCallTimestamps.shift();
+  }
+  return embeddingCallTimestamps.length < EMBEDDING_RATE_LIMIT;
+}
+
+function recordEmbeddingCall(): void {
+  embeddingCallTimestamps.push(Date.now());
+}
+
+// Wrapper for embeddings with quota error handling
+async function safeEmbedQuery(text: string): Promise<{ success: boolean; embedding?: number[]; error?: string }> {
+  try {
+    // Check cache first
+    const cached = getCachedEmbedding(text);
+    if (cached) {
+      console.log('✅ Using cached embedding');
+      return { success: true, embedding: cached };
+    }
+
+    // Check rate limit
+    if (!canMakeEmbeddingCall()) {
+      console.warn('⚠️ Rate limit reached, skipping embedding generation');
+      return { success: false, error: 'Rate limit reached' };
+    }
+
+    // Make API call
+    recordEmbeddingCall();
+    const embedding = await embeddings.embedQuery(text);
+    setCachedEmbedding(text, embedding);
+    console.log(`🔍 Generated new embedding (${embedding.length} dimensions)`);
+    return { success: true, embedding };
+  } catch (error: any) {
+    // Check if it's a quota error
+    if (error?.status === 429 || error?.message?.includes('quota') || error?.message?.includes('Too Many Requests')) {
+      console.warn('⚠️ Quota exceeded, falling back to non-RAG mode');
+      return { success: false, error: 'Quota exceeded' };
+    }
+    console.error('Embedding generation error:', error);
+    return { success: false, error: error?.message || 'Unknown error' };
+  }
 }
 
 const ContractGenerationState = Annotation.Root({
@@ -84,11 +166,25 @@ async function retrieveTemplates(
       };
     }
 
-    const proposalEmbedding = await embeddings.embedQuery(state.proposal);
-    console.log(`🔍 RAG: Generated proposal embedding (${proposalEmbedding.length} dimensions)`);
+    // Use safe embedding query with quota error handling
+    const embeddingResult = await safeEmbedQuery(state.proposal);
+
+    if (!embeddingResult.success || !embeddingResult.embedding) {
+      console.warn(`⚠️ RAG embedding failed: ${embeddingResult.error}. Falling back to first template.`);
+      await storage.incrementTemplateUsage(allTemplates[0].id);
+
+      return {
+        templateContent: allTemplates[0].content,
+        templateId: allTemplates[0].id,
+        relevantTemplates: [],
+        useRag: false,
+        step: "generate",
+        error: null,
+      };
+    }
 
     const searchResult = await searchTemplatesByEmbedding(
-      proposalEmbedding,
+      embeddingResult.embedding,
       0.3,  // Lowered to 30% for better matching
       5
     );
@@ -96,9 +192,9 @@ async function retrieveTemplates(
     if (!searchResult.success || searchResult.data.length === 0) {
       console.warn(`⚠️ RAG search failed or no matches: ${searchResult.error || 'No similar templates'}. Falling back to first template.`);
       console.log(`Available templates: ${allTemplates.length}, Supabase available: ${checkSupabaseAvailability()}`);
-      
+
       await storage.incrementTemplateUsage(allTemplates[0].id);
-      
+
       return {
         templateContent: allTemplates[0].content,
         templateId: allTemplates[0].id,
@@ -173,12 +269,12 @@ async function generateContract(
       ? `Retrieved via RAG (semantic search) - ${state.relevantTemplates.length} similar templates analyzed`
       : "Using available template (RAG unavailable or no matches)";
 
-    const prompt = `You are a legal contract generation assistant. Generate a professional contract based on the following:
+    const prompt = `You are an expert legal contract generation assistant. Generate a comprehensive, professionally structured legal contract.
 
-TEMPLATE (${ragInfo}):
+REFERENCE TEMPLATE (${ragInfo}):
 ${state.templateContent}
 
-BUSINESS PROPOSAL:
+BUSINESS PROPOSAL/DESCRIPTION:
 ${state.proposal}
 
 CONTRACT DETAILS:
@@ -186,16 +282,17 @@ CONTRACT DETAILS:
 - Type: ${state.contractType}
 - Parties: ${state.parties.join(", ")}
 
-Instructions:
-1. Use the template structure as a foundation
-2. Incorporate ALL specific requirements from the business proposal
-3. Customize the contract for the specified parties and contract type
-4. Ensure all legal clauses are properly formatted
-5. Replace template placeholders with actual details from the proposal
-6. Maintain professional legal language
-7. Include all terms, conditions, and clauses mentioned in the proposal
+INSTRUCTIONS:
+1. Extract ALL requirements from proposal and address comprehensively
+2. Follow template structure with proper legal formatting (numbered sections)
+3. Include standard clauses: Purpose, Definitions, Responsibilities, Payment, Deliverables, Confidentiality, IP Rights, Warranties, Liability, Indemnification, Term/Termination, Dispute Resolution, Governing Law, Amendments, Entire Agreement, Signatures
+4. Replace placeholders with actual party names
+5. Use formal legal terminology; ensure legal soundness
+6. Generate complete detailed contract (not outline)
 
-Generate the complete contract:`;
+OUTPUT: Professional ${state.contractType} contract with clear sections and complete clauses.
+
+Generate the complete ${state.contractType} contract now:`;
 
     const response = await llm.invoke(prompt);
     const generatedContent = response.content.toString();
@@ -243,7 +340,7 @@ const contractGenerationGraph = new StateGraph(ContractGenerationState)
 export const contractGenerationWorkflow = contractGenerationGraph.compile();
 
 const ValidationState = Annotation.Root({
-  contractId: Annotation<string>(),
+  contractId: Annotation<string | null>(),
   contractContent: Annotation<string>(),
   proposalText: Annotation<string>(),
   relevantContext: Annotation<any[]>(),
@@ -257,6 +354,79 @@ async function retrieveContractAndContext(
   state: typeof ValidationState.State
 ): Promise<Partial<typeof ValidationState.State>> {
   try {
+    // IMPORTANT: Check if contractContent is already provided (from file upload)
+    // If so, skip database retrieval and just handle RAG context
+    if (state.contractContent) {
+      console.log("Contract content already provided (uploaded file), skipping database retrieval");
+
+      // Try to get RAG context for better validation
+      if (!checkSupabaseAvailability()) {
+        console.warn("Supabase not available, validating without RAG context");
+        return {
+          contractContent: state.contractContent,
+          relevantContext: [],
+          useRag: false,
+          step: "validate",
+          error: null,
+        };
+      }
+
+      try {
+        // Use safe embedding query with quota error handling
+        const embeddingResult = await safeEmbedQuery(state.proposalText);
+
+        if (!embeddingResult.success || !embeddingResult.embedding) {
+          console.warn(`RAG embedding failed: ${embeddingResult.error}. Validating without context.`);
+          return {
+            contractContent: state.contractContent,
+            relevantContext: [],
+            useRag: false,
+            step: "validate",
+            error: null,
+          };
+        }
+
+        const searchResult = await searchTemplatesByEmbedding(
+          embeddingResult.embedding,
+          0.3,
+          3
+        );
+
+        if (!searchResult.success) {
+          console.warn(`RAG context retrieval failed: ${searchResult.error}. Validating without context.`);
+          return {
+            contractContent: state.contractContent,
+            relevantContext: [],
+            useRag: false,
+            step: "validate",
+            error: null,
+          };
+        }
+
+        return {
+          contractContent: state.contractContent,
+          relevantContext: searchResult.data,
+          useRag: searchResult.data.length > 0,
+          step: "validate",
+          error: null,
+        };
+      } catch (embeddingError) {
+        console.warn("Failed to retrieve RAG context, validating without it:", embeddingError);
+        return {
+          contractContent: state.contractContent,
+          relevantContext: [],
+          useRag: false,
+          step: "validate",
+          error: null,
+        };
+      }
+    }
+
+    // Otherwise, retrieve contract from database by ID
+    if (!state.contractId) {
+      return { error: "Contract ID or content must be provided", step: "error" };
+    }
+
     const contract = await storage.getContract(state.contractId);
     if (!contract) {
       return { error: "Contract not found", step: "error" };
@@ -274,9 +444,22 @@ async function retrieveContractAndContext(
     }
 
     try {
-      const proposalEmbedding = await embeddings.embedQuery(state.proposalText);
+      // Use safe embedding query with quota error handling
+      const embeddingResult = await safeEmbedQuery(state.proposalText);
+
+      if (!embeddingResult.success || !embeddingResult.embedding) {
+        console.warn(`RAG embedding failed: ${embeddingResult.error}. Validating without context.`);
+        return {
+          contractContent: contract.content,
+          relevantContext: [],
+          useRag: false,
+          step: "validate",
+          error: null,
+        };
+      }
+
       const searchResult = await searchTemplatesByEmbedding(
-        proposalEmbedding,
+        embeddingResult.embedding,
         0.3,  // Lowered to 30% for better matching
         3
       );
@@ -327,49 +510,78 @@ async function validateContract(
 ${state.relevantContext.length} similar legal template(s) were analyzed for validation context.`
       : "\n\n(Validation performed without RAG context)";
 
-    const prompt = `You are a legal contract validation assistant. Validate the following contract against the business proposal.
+    const prompt = `You are an expert legal contract validation assistant. Perform a comprehensive validation of the contract against the business proposal requirements.
 
-BUSINESS PROPOSAL:
+BUSINESS PROPOSAL / REQUIREMENTS:
 ${state.proposalText}
 
 CONTRACT TO VALIDATE:
 ${state.contractContent}
 ${ragInfo}
 
-Instructions:
-1. Check if all requirements from the proposal are addressed in the contract
-2. Identify any missing clauses or terms
-3. Flag any contradictions or compliance issues
-4. Compare against standard legal practices for completeness
-5. Suggest improvements where applicable
-6. Categorize issues as: error (critical), warning (important), or info (suggestion)
+VALIDATION INSTRUCTIONS:
 
-Respond with a JSON object in this format:
+STEP 1 - TYPE COMPATIBILITY CHECK (CRITICAL):
+First, determine if the contract TYPE and SUBJECT MATTER match the proposal TYPE and SUBJECT MATTER.
+
+Examples of TYPE MISMATCHES (must return "failed" status):
+- Proposal: Employment/hiring → Contract: Service agreement → FAILED (incompatible types)
+- Proposal: B2B service delivery → Contract: Employment contract → FAILED (incompatible types)
+- Proposal: NDA/confidentiality → Contract: Purchase agreement → FAILED (incompatible types)
+
+If the contract type does NOT match the proposal type/subject, return status "failed" with error explaining the type mismatch.
+
+STEP 2 - REQUIREMENT VALIDATION (only if types match):
+If contract type matches proposal type, validate requirements:
+
+1. Requirements Coverage: Check each proposal requirement substantially addressed
+2. Compliance: Flag ONLY direct contradictions (e.g., "monthly" vs "quarterly")
+3. Completeness: Verify expected structure exists
+4. Issues: ERROR only for contradictions/missing critical items, WARNING for scope changes, INFO for suggestions
+
+DO NOT report: different wording, formal phrasing, standard clauses, reasonable interpretations
+
+OUTPUT: Valid JSON only
 {
   "status": "compliant" | "issues_found" | "failed",
-  "summary": "Brief summary of validation results",
-  "issues": [
-    {
-      "type": "error" | "warning" | "info",
-      "section": "Section name if applicable",
-      "message": "Detailed description of the issue or suggestion"
-    }
-  ]
-}`;
+  "summary": "2-3 sentences",
+  "issues": [{"type": "error|warning|info", "section": "...", "message": "..."}]
+}
+
+EXAMPLES:
+- Proposal: Employment for "Software Engineer" → Contract: Employment for "Marketing Manager" → ERROR (wrong role)
+- Proposal: "2 year term" → Contract: "24 months" → COMPLIANT (same meaning)
+- Proposal: "monthly pay" → Contract: "quarterly pay" → ERROR (direct contradiction)
+- Proposal: Service agreement between companies → Contract: Employment contract → FAILED (type mismatch)
+
+Return your response now:`;
 
     const response = await llm.invoke(prompt + "\n\nProvide your response as valid JSON only, with no additional text.");
 
     const responseText = response.content.toString();
+    console.log('Validation LLM response length:', responseText.length);
+    
     // Extract JSON from response (Gemini sometimes wraps it in markdown)
     const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-    const validationResult = jsonMatch ? JSON.parse(jsonMatch[0]) : JSON.parse(responseText);
+    if (!jsonMatch) {
+      console.error('Failed to extract JSON from response:', responseText.substring(0, 200));
+      throw new Error('Invalid validation response format');
+    }
+    
+    const validationResult = JSON.parse(jsonMatch[0]);
+    console.log('Validation result status:', validationResult.status);
+    console.log('Issues count:', validationResult.issues?.length || 0);
 
-    const newStatus = validationResult.status === "compliant" ? "validated" :
-                      validationResult.status === "issues_found" ? "pending" : "draft";
-    
-    await storage.updateContract(state.contractId, { status: newStatus });
-    
-    console.log(`Contract ${state.contractId} validated: ${validationResult.status} (RAG: ${state.useRag})`);
+    // Only update contract status if we have a contract ID (not for uploaded files)
+    if (state.contractId) {
+      const newStatus = validationResult.status === "compliant" ? "validated" :
+                        validationResult.status === "issues_found" ? "pending" : "draft";
+
+      await storage.updateContract(state.contractId, { status: newStatus });
+      console.log(`Contract ${state.contractId} validated: ${validationResult.status} (RAG: ${state.useRag})`);
+    } else {
+      console.log(`Uploaded file validated: ${validationResult.status} (RAG: ${state.useRag})`);
+    }
 
     return {
       validationResult,
@@ -396,9 +608,9 @@ const validationGraph = new StateGraph(ValidationState)
 
 export const validationWorkflow = validationGraph.compile();
 
-export async function generateEmbedding(text: string): Promise<number[]> {
-  const embedding = await embeddings.embedQuery(text);
-  return embedding;
+export async function generateEmbedding(text: string): Promise<number[] | null> {
+  const result = await safeEmbedQuery(text);
+  return result.embedding || null;
 }
 
 export async function searchSimilarTemplates(
@@ -406,6 +618,10 @@ export async function searchSimilarTemplates(
   limit: number = 3
 ): Promise<any[]> {
   const queryEmbedding = await generateEmbedding(query);
+  if (!queryEmbedding) {
+    console.warn('Failed to generate embedding for search, returning empty results');
+    return [];
+  }
   const result = await searchTemplatesByEmbedding(queryEmbedding, 0.3, limit);  // Lowered to 30% for better matching
   return result.success ? result.data : [];
 }

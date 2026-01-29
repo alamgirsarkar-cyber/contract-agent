@@ -127,6 +127,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       console.log(`Validating contract: ${contractId}`);
+      console.log(`Proposal length: ${proposalText.length} characters`);
+      
+      // Verify contract exists before validation
+      const contract = await storage.getContract(contractId);
+      if (!contract) {
+        console.error(`Contract not found: ${contractId}`);
+        return res.status(404).json({ error: `Contract ${contractId} not found` });
+      }
+      
+      console.log(`Contract found: ${contract.title} (${contract.content.length} chars)`);
 
       const result = await validationWorkflow.invoke({
         contractId,
@@ -157,12 +167,108 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       console.log(`Validation ${validation.id} created for contract ${contractId}`);
+      console.log(`Validation status: ${result.validationResult.status}`);
+      console.log(`Issues found: ${result.validationResult.issues?.length || 0}`);
 
       res.json(result.validationResult);
     } catch (error) {
       console.error("Contract validation error:", error);
-      res.status(500).json({ 
-        error: error instanceof Error ? error.message : "Failed to validate contract" 
+      res.status(500).json({
+        error: error instanceof Error ? error.message : "Failed to validate contract"
+      });
+    }
+  });
+
+  // File upload endpoint for validation
+  app.post("/api/contracts/validate-upload", upload.single("file"), async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ error: "No file uploaded" });
+      }
+
+      const { proposalText } = req.body;
+
+      if (!proposalText) {
+        return res.status(400).json({ error: "Missing required field: proposalText" });
+      }
+
+      console.log(`Validating uploaded file: ${req.file.originalname}`);
+
+      // Parse the uploaded contract file
+      const parseResult = await parseFile(
+        req.file.buffer,
+        req.file.mimetype,
+        req.file.originalname
+      );
+
+      if (parseResult.error || !parseResult.content) {
+        return res.status(400).json({
+          error: parseResult.error || "Failed to extract content from file"
+        });
+      }
+
+      // Use the validation workflow with the parsed content
+      const result = await validationWorkflow.invoke({
+        contractId: null,
+        proposalText,
+        contractContent: parseResult.content,
+        relevantContext: [],
+        useRag: false,
+        validationResult: null,
+        step: "retrieve", // Start from retrieve (it will detect content is already provided)
+        error: null,
+      });
+
+      if (result.error) {
+        console.error("Validation workflow error:", result.error);
+        return res.status(500).json({ error: result.error });
+      }
+
+      if (!result.validationResult) {
+        console.error("Validation completed but no result returned");
+        return res.status(500).json({ error: "Validation failed - no result generated" });
+      }
+
+      console.log(`Validated uploaded file: ${req.file.originalname}`);
+
+      res.json(result.validationResult);
+    } catch (error) {
+      console.error("Contract validation (upload) error:", error);
+      res.status(500).json({
+        error: error instanceof Error ? error.message : "Failed to validate contract"
+      });
+    }
+  });
+
+  // Feedback endpoint for validation results
+  app.post("/api/contracts/validate-feedback", async (req, res) => {
+    try {
+      const { contractId, fileName, feedback, comment, validationResult } = req.body;
+
+      if (!feedback || !validationResult) {
+        return res.status(400).json({ error: "Missing required fields: feedback, validationResult" });
+      }
+
+      if (feedback !== "approved" && feedback !== "rejected") {
+        return res.status(400).json({ error: "Invalid feedback value. Must be 'approved' or 'rejected'" });
+      }
+
+      // Store the feedback
+      const feedbackRecord = await storage.createValidationFeedback({
+        contractId: contractId || null,
+        fileName: fileName || null,
+        feedback,
+        comment: comment || null,
+        validationResult,
+      });
+
+      console.log(`Feedback ${feedbackRecord.id} created: ${feedback}`);
+
+      res.json({ success: true, feedbackId: feedbackRecord.id });
+    } catch (error) {
+      console.error("Validation feedback error:", error);
+      res.status(500).json({
+        error: error instanceof Error ? error.message : "Failed to submit feedback"
       });
     }
   });
@@ -224,18 +330,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const template = await storage.createTemplate(validatedData);
 
-      // Generate and store embedding
+      // Generate and store embedding (with quota error handling)
       try {
         const embedding = await generateEmbedding(parseResult.content);
-        const storeResult = await storeTemplateEmbedding(template.id, parseResult.content, embedding);
 
-        if (storeResult.success) {
-          console.log(`✅ Template ${template.id} embedded and stored in Supabase vector database`);
+        if (embedding) {
+          const storeResult = await storeTemplateEmbedding(template.id, parseResult.content, embedding);
+
+          if (storeResult.success) {
+            console.log(`✅ Template ${template.id} embedded and stored in Supabase vector database`);
+          } else {
+            console.warn(`⚠️ Embedding storage failed for ${template.id}: ${storeResult.error}`);
+          }
         } else {
-          console.error(`❌ Embedding storage failed for ${template.id}: ${storeResult.error}`);
+          console.warn(`⚠️ Embedding generation skipped for ${template.id} (quota/rate limit)`);
         }
       } catch (embeddingError) {
-        console.error(`❌ Failed to generate/store embedding for ${template.id}:`, embeddingError);
+        console.warn(`⚠️ Failed to generate/store embedding for ${template.id}:`, embeddingError);
       }
 
       res.status(201).json(template);
@@ -255,15 +366,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       try {
         const embedding = await generateEmbedding(validatedData.content);
-        const storeResult = await storeTemplateEmbedding(template.id, validatedData.content, embedding);
 
-        if (storeResult.success) {
-          console.log(`Template ${template.id} embedded and stored in Supabase vector database`);
+        if (embedding) {
+          const storeResult = await storeTemplateEmbedding(template.id, validatedData.content, embedding);
+
+          if (storeResult.success) {
+            console.log(`✅ Template ${template.id} embedded and stored in Supabase vector database`);
+          } else {
+            console.warn(`⚠️ Template ${template.id} created but embedding storage failed: ${storeResult.error}`);
+          }
         } else {
-          console.warn(`Template ${template.id} created but embedding storage failed: ${storeResult.error}`);
+          console.warn(`⚠️ Embedding generation skipped for ${template.id} (quota/rate limit)`);
         }
       } catch (embeddingError) {
-        console.error("Failed to generate/store embedding:", embeddingError);
+        console.warn("⚠️ Failed to generate/store embedding:", embeddingError);
       }
 
       res.status(201).json(template);
@@ -303,7 +419,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             name: "Google Gemini",
             description: "Free cloud API with quota limits",
             models: {
-              llm: "gemini-pro",
+              llm: "gemini-2.5-flash",
               embedding: "embedding-001"
             }
           }
@@ -312,6 +428,54 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("GET /api/settings/llm-provider error:", error);
       res.status(500).json({ error: "Failed to fetch LLM provider settings" });
+    }
+  });
+
+  // DELETE contract endpoint
+  app.delete("/api/contracts/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      
+      console.log(`Deleting contract: ${id}`);
+      
+      const contract = await storage.getContract(id);
+      if (!contract) {
+        return res.status(404).json({ error: "Contract not found" });
+      }
+      
+      await storage.deleteContract(id);
+      console.log(`Contract ${id} deleted successfully`);
+      
+      res.json({ success: true, message: "Contract deleted successfully" });
+    } catch (error) {
+      console.error("DELETE /api/contracts/:id error:", error);
+      res.status(500).json({ 
+        error: error instanceof Error ? error.message : "Failed to delete contract" 
+      });
+    }
+  });
+
+  // DELETE template endpoint
+  app.delete("/api/templates/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      
+      console.log(`Deleting template: ${id}`);
+      
+      const template = await storage.getTemplate(id);
+      if (!template) {
+        return res.status(404).json({ error: "Template not found" });
+      }
+      
+      await storage.deleteTemplate(id);
+      console.log(`Template ${id} deleted successfully`);
+      
+      res.json({ success: true, message: "Template deleted successfully" });
+    } catch (error) {
+      console.error("DELETE /api/templates/:id error:", error);
+      res.status(500).json({ 
+        error: error instanceof Error ? error.message : "Failed to delete template" 
+      });
     }
   });
 

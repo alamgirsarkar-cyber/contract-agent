@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -12,7 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { FileText, Search, Filter, Plus, MoreVertical } from "lucide-react";
+import { FileText, Search, Filter, Plus, MoreVertical, Trash2 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   DropdownMenu,
@@ -23,6 +23,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import type { Contract } from "@shared/schema";
 import { downloadAsDocx } from "@/lib/downloadUtils";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 
 export default function Contracts() {
   const [searchQuery, setSearchQuery] = useState("");
@@ -42,6 +43,32 @@ export default function Contracts() {
         description: "Failed to download contract. Please try again.",
         variant: "destructive",
       });
+    }
+  };
+
+  const deleteMutation = useMutation({
+    mutationFn: async (contractId: string) => {
+      return await apiRequest("DELETE", `/api/contracts/${contractId}`, {});
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/contracts"] });
+      toast({
+        title: "Contract deleted",
+        description: "The contract has been deleted successfully.",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Delete failed",
+        description: error.message || "Failed to delete contract. Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleDelete = async (contract: Contract) => {
+    if (confirm(`Are you sure you want to delete "${contract.title}"? This action cannot be undone.`)) {
+      deleteMutation.mutate(contract.id);
     }
   };
 
@@ -186,7 +213,13 @@ export default function Contracts() {
                         Download
                       </DropdownMenuItem>
                       <DropdownMenuItem>Validate</DropdownMenuItem>
-                      <DropdownMenuItem className="text-destructive">Delete</DropdownMenuItem>
+                      <DropdownMenuItem 
+                        className="text-destructive"
+                        onClick={() => handleDelete(contract)}
+                      >
+                        <Trash2 className="h-4 w-4 mr-2" />
+                        Delete
+                      </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </div>

@@ -5,9 +5,12 @@ import type {
   Template,
   InsertTemplate,
   Validation,
-  InsertValidation
+  InsertValidation,
+  ValidationFeedback,
+  InsertValidationFeedback
 } from "@shared/schema";
 import { supabase } from "./supabase";
+import { saveContractToFile, loadContractsFromDisk, deleteContractFromDisk } from "./file-storage";
 
 export interface IStorage {
   getContracts(): Promise<Contract[]>;
@@ -20,21 +23,45 @@ export interface IStorage {
   getTemplate(id: string): Promise<Template | undefined>;
   createTemplate(template: InsertTemplate): Promise<Template>;
   incrementTemplateUsage(id: string): Promise<void>;
+  deleteTemplate(id: string): Promise<void>;
 
   getValidations(): Promise<Validation[]>;
   getValidation(id: string): Promise<Validation | undefined>;
   createValidation(validation: InsertValidation): Promise<Validation>;
+
+  getValidationFeedbacks(): Promise<ValidationFeedback[]>;
+  getValidationFeedback(id: string): Promise<ValidationFeedback | undefined>;
+  createValidationFeedback(feedback: InsertValidationFeedback): Promise<ValidationFeedback>;
 }
 
 export class MemStorage implements IStorage {
   private contracts: Map<string, Contract>;
   private templates: Map<string, Template>;
   private validations: Map<string, Validation>;
+  private validationFeedbacks: Map<string, ValidationFeedback>;
+  private contractsLoaded: boolean = false;
 
   constructor() {
     this.contracts = new Map();
     this.templates = new Map();
     this.validations = new Map();
+    this.validationFeedbacks = new Map();
+    // Load contracts from disk asynchronously
+    this.loadContractsFromDiskAsync();
+  }
+
+  private async loadContractsFromDiskAsync(): Promise<void> {
+    try {
+      const contracts = await loadContractsFromDisk();
+      for (const contract of contracts) {
+        this.contracts.set(contract.id, contract);
+      }
+      this.contractsLoaded = true;
+      console.log(`✅ Loaded ${contracts.length} contracts from disk into memory`);
+    } catch (error) {
+      console.error("Failed to load contracts from disk:", error);
+      this.contractsLoaded = true; // Mark as loaded even on error
+    }
   }
 
   async getContracts(): Promise<Contract[]> {
@@ -57,6 +84,15 @@ export class MemStorage implements IStorage {
       updatedAt: now,
     };
     this.contracts.set(id, contract);
+    
+    // Save to disk
+    try {
+      await saveContractToFile(contract);
+    } catch (error) {
+      console.error("Failed to save contract to disk:", error);
+      // Continue even if file save fails
+    }
+    
     return contract;
   }
 
@@ -71,11 +107,31 @@ export class MemStorage implements IStorage {
       updatedAt: new Date(),
     };
     this.contracts.set(id, updated);
+    
+    // Update file on disk
+    try {
+      await saveContractToFile(updated);
+    } catch (error) {
+      console.error("Failed to update contract on disk:", error);
+      // Continue even if file save fails
+    }
+    
     return updated;
   }
 
   async deleteContract(id: string): Promise<void> {
+    const contract = this.contracts.get(id);
     this.contracts.delete(id);
+    
+    // Delete from disk
+    if (contract) {
+      try {
+        await deleteContractFromDisk(contract);
+      } catch (error) {
+        console.error("Failed to delete contract from disk:", error);
+        // Continue even if file delete fails
+      }
+    }
   }
 
   async getTemplates(): Promise<Template[]> {
@@ -110,6 +166,10 @@ export class MemStorage implements IStorage {
     }
   }
 
+  async deleteTemplate(id: string): Promise<void> {
+    this.templates.delete(id);
+  }
+
   async getValidations(): Promise<Validation[]> {
     return Array.from(this.validations.values());
   }
@@ -128,16 +188,56 @@ export class MemStorage implements IStorage {
     this.validations.set(id, validation);
     return validation;
   }
+
+  async getValidationFeedbacks(): Promise<ValidationFeedback[]> {
+    return Array.from(this.validationFeedbacks.values()).sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+  }
+
+  async getValidationFeedback(id: string): Promise<ValidationFeedback | undefined> {
+    return this.validationFeedbacks.get(id);
+  }
+
+  async createValidationFeedback(insertFeedback: InsertValidationFeedback): Promise<ValidationFeedback> {
+    const id = randomUUID();
+    const feedback: ValidationFeedback = {
+      ...insertFeedback,
+      id,
+      createdAt: new Date(),
+    };
+    this.validationFeedbacks.set(id, feedback);
+    return feedback;
+  }
 }
 
 // Supabase Storage - stores templates in Supabase vector database
 export class SupabaseStorage implements IStorage {
   private memContracts: Map<string, Contract>;
   private memValidations: Map<string, Validation>;
+  private memValidationFeedbacks: Map<string, ValidationFeedback>;
+  private contractsLoaded: boolean = false;
 
   constructor() {
     this.memContracts = new Map();
     this.memValidations = new Map();
+    this.memValidationFeedbacks = new Map();
+    // Load contracts from disk asynchronously
+    this.loadContractsFromDiskAsync();
+  }
+
+  private async loadContractsFromDiskAsync(): Promise<void> {
+    try {
+      const contracts = await loadContractsFromDisk();
+      for (const contract of contracts) {
+        this.memContracts.set(contract.id, contract);
+      }
+      this.contractsLoaded = true;
+      console.log(`✅ Loaded ${contracts.length} contracts from disk into memory`);
+    } catch (error) {
+      console.error("Failed to load contracts from disk:", error);
+      this.contractsLoaded = true; // Mark as loaded even on error
+    }
   }
 
   // Contracts still use in-memory storage (can be migrated later if needed)
@@ -161,6 +261,15 @@ export class SupabaseStorage implements IStorage {
       updatedAt: now,
     };
     this.memContracts.set(id, contract);
+    
+    // Save to disk
+    try {
+      await saveContractToFile(contract);
+    } catch (error) {
+      console.error("Failed to save contract to disk:", error);
+      // Continue even if file save fails
+    }
+    
     return contract;
   }
 
@@ -175,11 +284,31 @@ export class SupabaseStorage implements IStorage {
       updatedAt: new Date(),
     };
     this.memContracts.set(id, updated);
+    
+    // Update file on disk
+    try {
+      await saveContractToFile(updated);
+    } catch (error) {
+      console.error("Failed to update contract on disk:", error);
+      // Continue even if file save fails
+    }
+    
     return updated;
   }
 
   async deleteContract(id: string): Promise<void> {
+    const contract = this.memContracts.get(id);
     this.memContracts.delete(id);
+    
+    // Delete from disk
+    if (contract) {
+      try {
+        await deleteContractFromDisk(contract);
+      } catch (error) {
+        console.error("Failed to delete contract from disk:", error);
+        // Continue even if file delete fails
+      }
+    }
   }
 
   // Templates stored in Supabase
@@ -312,6 +441,31 @@ export class SupabaseStorage implements IStorage {
     }
   }
 
+  async deleteTemplate(id: string): Promise<void> {
+    const client = supabase();
+    if (!client) {
+      console.warn("Supabase not available - cannot delete template");
+      return;
+    }
+
+    try {
+      const { error } = await client
+        .from("templates")
+        .delete()
+        .eq("id", id);
+
+      if (error) {
+        console.error("Error deleting template from Supabase:", error);
+        throw new Error(`Failed to delete template: ${error.message}`);
+      }
+
+      console.log(`Template ${id} deleted from Supabase successfully`);
+    } catch (error) {
+      console.error("Exception deleting template:", error);
+      throw error;
+    }
+  }
+
   // Validations still use in-memory storage (can be migrated later if needed)
   async getValidations(): Promise<Validation[]> {
     return Array.from(this.memValidations.values());
@@ -330,6 +484,27 @@ export class SupabaseStorage implements IStorage {
     };
     this.memValidations.set(id, validation);
     return validation;
+  }
+
+  async getValidationFeedbacks(): Promise<ValidationFeedback[]> {
+    return Array.from(this.memValidationFeedbacks.values()).sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+  }
+
+  async getValidationFeedback(id: string): Promise<ValidationFeedback | undefined> {
+    return this.memValidationFeedbacks.get(id);
+  }
+
+  async createValidationFeedback(insertFeedback: InsertValidationFeedback): Promise<ValidationFeedback> {
+    const id = randomUUID();
+    const feedback: ValidationFeedback = {
+      ...insertFeedback,
+      id,
+      createdAt: new Date(),
+    };
+    this.memValidationFeedbacks.set(id, feedback);
+    return feedback;
   }
 }
 
