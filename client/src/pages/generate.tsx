@@ -32,16 +32,16 @@ export default function Generate() {
     mutationFn: async () => {
       setCurrentStep("generating");
       setProgress(20);
-      
+
       const response = await apiRequest("POST", "/api/contracts/generate", {
         proposal,
         contractTitle,
         contractType,
         parties: parties.split(",").map((p) => p.trim()).filter(Boolean),
       });
-      
+
       setProgress(100);
-      return response;
+      return await response.json();
     },
     onSuccess: (data: any) => {
       setGeneratedContent(data.content);
