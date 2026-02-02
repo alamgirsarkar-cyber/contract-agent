@@ -222,7 +222,9 @@ export default function Validate() {
 
   const selectedContract = contracts?.find((c) => c.id === selectedContractId);
 
-  const canValidate = proposalText &&
+  // Validation can proceed with or without proposal text
+  // When no proposal is provided, validation uses global clauses from stored templates
+  const canValidate =
     ((contractSource === "existing" && selectedContractId) ||
      (contractSource === "upload" && uploadedFile));
 
@@ -244,7 +246,7 @@ export default function Validate() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="proposal">Original Proposal or Requirements</Label>
+              <Label htmlFor="proposal">Original Proposal or Requirements (Optional)</Label>
               <Textarea
                 id="proposal"
                 placeholder="Paste the business proposal or requirements that the contract should comply with..."
@@ -253,6 +255,9 @@ export default function Validate() {
                 onChange={(e) => setProposalText(e.target.value)}
                 data-testid="textarea-proposal"
               />
+              <p className="text-xs text-muted-foreground">
+                Leave empty to validate against global clauses from stored agreement templates
+              </p>
             </div>
           </CardContent>
         </Card>

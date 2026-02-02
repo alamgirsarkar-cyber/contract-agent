@@ -122,28 +122,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { contractId, proposalText } = req.body;
 
-      if (!contractId || !proposalText) {
-        return res.status(400).json({ error: "Missing required fields: contractId, proposalText" });
+      if (!contractId) {
+        return res.status(400).json({ error: "Missing required field: contractId" });
       }
 
       console.log(`Validating contract: ${contractId}`);
-      console.log(`Proposal length: ${proposalText.length} characters`);
-      
+      console.log(`Proposal provided: ${proposalText ? `${proposalText.length} characters` : 'No (using global clauses)'}`);
+
       // Verify contract exists before validation
       const contract = await storage.getContract(contractId);
       if (!contract) {
         console.error(`Contract not found: ${contractId}`);
         return res.status(404).json({ error: `Contract ${contractId} not found` });
       }
-      
+
       console.log(`Contract found: ${contract.title} (${contract.content.length} chars)`);
 
       const result = await validationWorkflow.invoke({
         contractId,
-        proposalText,
+        proposalText: proposalText || "", // Empty string signals to use global clauses
         contractContent: "",
         relevantContext: [],
         useRag: false,
+        useGlobalClauses: !proposalText, // Flag to use global clauses when no proposal
         validationResult: null,
         step: "retrieve",
         error: null,
@@ -188,11 +189,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const { proposalText } = req.body;
 
-      if (!proposalText) {
-        return res.status(400).json({ error: "Missing required field: proposalText" });
-      }
-
       console.log(`Validating uploaded file: ${req.file.originalname}`);
+      console.log(`Proposal provided: ${proposalText ? `${proposalText.length} characters` : 'No (using global clauses)'}`);
 
       // Parse the uploaded contract file
       const parseResult = await parseFile(
@@ -210,10 +208,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Use the validation workflow with the parsed content
       const result = await validationWorkflow.invoke({
         contractId: null,
-        proposalText,
+        proposalText: proposalText || "", // Empty string signals to use global clauses
         contractContent: parseResult.content,
         relevantContext: [],
         useRag: false,
+        useGlobalClauses: !proposalText, // Flag to use global clauses when no proposal
         validationResult: null,
         step: "retrieve", // Start from retrieve (it will detect content is already provided)
         error: null,

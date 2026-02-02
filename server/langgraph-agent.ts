@@ -345,19 +345,86 @@ const ValidationState = Annotation.Root({
   proposalText: Annotation<string>(),
   relevantContext: Annotation<any[]>(),
   useRag: Annotation<boolean>(),
+  useGlobalClauses: Annotation<boolean>(),
+  globalClausesContent: Annotation<string>(),
   validationResult: Annotation<any>(),
   step: Annotation<string>(),
   error: Annotation<string | null>(),
 });
 
+// Helper function to extract key clause sections from template content
+function extractKeyClauses(content: string): string {
+  // Common clause section headers to look for
+  const clausePatterns = [
+    /(?:^|\n)((?:\d+\.?\s*)?(?:DEFINITIONS?|TERM|TERMINATION|PAYMENT|COMPENSATION|CONFIDENTIAL|NON-DISCLOSURE|INTELLECTUAL PROPERTY|IP RIGHTS|WARRANTY|WARRANTIES|LIABILITY|INDEMNIF|DISPUTE|GOVERNING LAW|AMENDMENT|SIGNATURE)[^\n]*)\n([\s\S]*?)(?=\n(?:\d+\.?\s*)?[A-Z]{3,}|\n*$)/gi
+  ];
+
+  const extractedClauses: string[] = [];
+
+  for (const pattern of clausePatterns) {
+    let match;
+    while ((match = pattern.exec(content)) !== null) {
+      const clauseTitle = match[1].trim();
+      const clauseContent = match[2].trim().substring(0, 500); // Limit each clause to 500 chars
+      if (clauseContent) {
+        extractedClauses.push(`${clauseTitle}\n${clauseContent}...`);
+      }
+    }
+  }
+
+  // If no specific clauses found, return a truncated version of the content
+  if (extractedClauses.length === 0) {
+    return content.substring(0, 2000);
+  }
+
+  return extractedClauses.join("\n\n");
+}
+
+// Helper function to fetch global clauses from templates
+async function fetchGlobalClauses(): Promise<string> {
+  const templates = await storage.getTemplates();
+  if (templates.length === 0) {
+    return "";
+  }
+
+  // Limit to top 3 most used templates to avoid token overflow
+  const topTemplates = templates.slice(0, 3);
+
+  // Extract key clauses from templates (limited content)
+  const globalClauses = topTemplates.map((t, idx) => {
+    const keyClauses = extractKeyClauses(t.content);
+    return `--- Template ${idx + 1}: ${t.title} (${t.category}) ---\n${keyClauses}`;
+  }).join("\n\n");
+
+  // Further limit total content to ~8000 chars to stay within LLM context limits
+  const limitedClauses = globalClauses.substring(0, 8000);
+
+  console.log(`Fetched global clauses from ${topTemplates.length} templates (${limitedClauses.length} chars)`);
+  return limitedClauses;
+}
+
 async function retrieveContractAndContext(
   state: typeof ValidationState.State
 ): Promise<Partial<typeof ValidationState.State>> {
   try {
+
     // IMPORTANT: Check if contractContent is already provided (from file upload)
     // If so, skip database retrieval and just handle RAG context
     if (state.contractContent) {
       console.log("Contract content already provided (uploaded file), skipping database retrieval");
+
+      // If using global clauses (no proposal provided), fetch templates
+      let globalClausesContent = "";
+      if (state.useGlobalClauses) {
+        console.log("No proposal provided - fetching global clauses from templates");
+        globalClausesContent = await fetchGlobalClauses();
+        if (!globalClausesContent) {
+          return {
+            error: "No templates available to use as global clauses. Please upload templates first.",
+            step: "error",
+          };
+        }
+      }
 
       // Try to get RAG context for better validation
       if (!checkSupabaseAvailability()) {
@@ -366,6 +433,7 @@ async function retrieveContractAndContext(
           contractContent: state.contractContent,
           relevantContext: [],
           useRag: false,
+          globalClausesContent,
           step: "validate",
           error: null,
         };
@@ -373,7 +441,9 @@ async function retrieveContractAndContext(
 
       try {
         // Use safe embedding query with quota error handling
-        const embeddingResult = await safeEmbedQuery(state.proposalText);
+        // For global clauses mode, use contract content for embedding search
+        const textForEmbedding = state.useGlobalClauses ? state.contractContent.substring(0, 2000) : state.proposalText;
+        const embeddingResult = await safeEmbedQuery(textForEmbedding);
 
         if (!embeddingResult.success || !embeddingResult.embedding) {
           console.warn(`RAG embedding failed: ${embeddingResult.error}. Validating without context.`);
@@ -381,6 +451,7 @@ async function retrieveContractAndContext(
             contractContent: state.contractContent,
             relevantContext: [],
             useRag: false,
+            globalClausesContent,
             step: "validate",
             error: null,
           };
@@ -398,6 +469,7 @@ async function retrieveContractAndContext(
             contractContent: state.contractContent,
             relevantContext: [],
             useRag: false,
+            globalClausesContent,
             step: "validate",
             error: null,
           };
@@ -407,6 +479,7 @@ async function retrieveContractAndContext(
           contractContent: state.contractContent,
           relevantContext: searchResult.data,
           useRag: searchResult.data.length > 0,
+          globalClausesContent,
           step: "validate",
           error: null,
         };
@@ -416,6 +489,7 @@ async function retrieveContractAndContext(
           contractContent: state.contractContent,
           relevantContext: [],
           useRag: false,
+          globalClausesContent,
           step: "validate",
           error: null,
         };
@@ -432,12 +506,26 @@ async function retrieveContractAndContext(
       return { error: "Contract not found", step: "error" };
     }
 
+    // If using global clauses (no proposal provided), fetch templates
+    let globalClausesContent = "";
+    if (state.useGlobalClauses) {
+      console.log("No proposal provided - fetching global clauses from templates");
+      globalClausesContent = await fetchGlobalClauses();
+      if (!globalClausesContent) {
+        return {
+          error: "No templates available to use as global clauses. Please upload templates first.",
+          step: "error",
+        };
+      }
+    }
+
     if (!checkSupabaseAvailability()) {
       console.warn("Supabase not available, validating without RAG context");
       return {
         contractContent: contract.content,
         relevantContext: [],
         useRag: false,
+        globalClausesContent,
         step: "validate",
         error: null,
       };
@@ -445,7 +533,9 @@ async function retrieveContractAndContext(
 
     try {
       // Use safe embedding query with quota error handling
-      const embeddingResult = await safeEmbedQuery(state.proposalText);
+      // For global clauses mode, use contract content for embedding search
+      const textForEmbedding = state.useGlobalClauses ? contract.content.substring(0, 2000) : state.proposalText;
+      const embeddingResult = await safeEmbedQuery(textForEmbedding);
 
       if (!embeddingResult.success || !embeddingResult.embedding) {
         console.warn(`RAG embedding failed: ${embeddingResult.error}. Validating without context.`);
@@ -453,6 +543,7 @@ async function retrieveContractAndContext(
           contractContent: contract.content,
           relevantContext: [],
           useRag: false,
+          globalClausesContent,
           step: "validate",
           error: null,
         };
@@ -470,6 +561,7 @@ async function retrieveContractAndContext(
           contractContent: contract.content,
           relevantContext: [],
           useRag: false,
+          globalClausesContent,
           step: "validate",
           error: null,
         };
@@ -479,6 +571,7 @@ async function retrieveContractAndContext(
         contractContent: contract.content,
         relevantContext: searchResult.data,
         useRag: searchResult.data.length > 0,
+        globalClausesContent,
         step: "validate",
         error: null,
       };
@@ -488,6 +581,7 @@ async function retrieveContractAndContext(
         contractContent: contract.content,
         relevantContext: [],
         useRag: false,
+        globalClausesContent,
         step: "validate",
         error: null,
       };
@@ -506,55 +600,60 @@ async function validateContract(
 ): Promise<Partial<typeof ValidationState.State>> {
   try {
     const ragInfo = state.useRag && state.relevantContext.length > 0
-      ? `\n\nRELEVANT TEMPLATE CONTEXT (Retrieved via RAG):
-${state.relevantContext.length} similar legal template(s) were analyzed for validation context.`
-      : "\n\n(Validation performed without RAG context)";
+      ? `\n(${state.relevantContext.length} similar templates analyzed via RAG)`
+      : "";
 
-    const prompt = `You are an expert legal contract validation assistant. Perform a comprehensive validation of the contract against the business proposal requirements.
+    // Limit contract content to avoid token overflow (keep ~15000 chars max)
+    const contractContent = state.contractContent.length > 15000
+      ? state.contractContent.substring(0, 15000) + "\n...[content truncated]..."
+      : state.contractContent;
 
-BUSINESS PROPOSAL / REQUIREMENTS:
-${state.proposalText}
+    // Build different prompts based on whether we're using global clauses or proposal
+    let prompt: string;
 
-CONTRACT TO VALIDATE:
-${state.contractContent}
+    if (state.useGlobalClauses && state.globalClausesContent) {
+      // Global clauses validation mode - validate against stored template standards
+      console.log("Using global clauses validation mode");
+      prompt = `You are a legal contract validator. Validate the contract against standard legal requirements.
+
+CONTRACT:
+${contractContent}
+
+REFERENCE CLAUSES:
+${state.globalClausesContent}
 ${ragInfo}
 
-VALIDATION INSTRUCTIONS:
+VALIDATE FOR:
+1. Essential clauses present (definitions, term, termination, confidentiality, IP, liability, dispute resolution, governing law)
+2. Clause quality (clear language, no conflicts, proper terminology)
+3. Structure (logical organization, complete sections)
+4. Risk (unusual clauses, missing protections)
 
-STEP 1 - TYPE COMPATIBILITY CHECK (CRITICAL):
-First, determine if the contract TYPE and SUBJECT MATTER match the proposal TYPE and SUBJECT MATTER.
+OUTPUT JSON only:
+{"status": "compliant|issues_found|failed", "summary": "2-3 sentences", "issues": [{"type": "error|warning|info", "section": "...", "message": "..."}]}
 
-Examples of TYPE MISMATCHES (must return "failed" status):
-- Proposal: Employment/hiring → Contract: Service agreement → FAILED (incompatible types)
-- Proposal: B2B service delivery → Contract: Employment contract → FAILED (incompatible types)
-- Proposal: NDA/confidentiality → Contract: Purchase agreement → FAILED (incompatible types)
+STATUS: compliant=all essential clauses present, issues_found=some missing/weak clauses, failed=critical deficiencies`;
+    } else {
+      // Standard validation mode - validate against business proposal
+      prompt = `You are a legal contract validator. Validate the contract against business proposal requirements.
 
-If the contract type does NOT match the proposal type/subject, return status "failed" with error explaining the type mismatch.
+PROPOSAL:
+${state.proposalText}
 
-STEP 2 - REQUIREMENT VALIDATION (only if types match):
-If contract type matches proposal type, validate requirements:
+CONTRACT:
+${contractContent}
+${ragInfo}
 
-1. Requirements Coverage: Check each proposal requirement substantially addressed
-2. Compliance: Flag ONLY direct contradictions (e.g., "monthly" vs "quarterly")
-3. Completeness: Verify expected structure exists
-4. Issues: ERROR only for contradictions/missing critical items, WARNING for scope changes, INFO for suggestions
+VALIDATION:
+1. TYPE CHECK: Contract type must match proposal type (Employment vs Service Agreement = FAILED)
+2. REQUIREMENTS: Check each requirement is addressed. Flag contradictions (monthly vs quarterly = ERROR)
+3. COMPLETENESS: Verify expected structure exists
 
-DO NOT report: different wording, formal phrasing, standard clauses, reasonable interpretations
+OUTPUT JSON only:
+{"status": "compliant|issues_found|failed", "summary": "2-3 sentences", "issues": [{"type": "error|warning|info", "section": "...", "message": "..."}]}
 
-OUTPUT: Valid JSON only
-{
-  "status": "compliant" | "issues_found" | "failed",
-  "summary": "2-3 sentences",
-  "issues": [{"type": "error|warning|info", "section": "...", "message": "..."}]
-}
-
-EXAMPLES:
-- Proposal: Employment for "Software Engineer" → Contract: Employment for "Marketing Manager" → ERROR (wrong role)
-- Proposal: "2 year term" → Contract: "24 months" → COMPLIANT (same meaning)
-- Proposal: "monthly pay" → Contract: "quarterly pay" → ERROR (direct contradiction)
-- Proposal: Service agreement between companies → Contract: Employment contract → FAILED (type mismatch)
-
-Return your response now:`;
+STATUS: compliant=requirements met, issues_found=some issues, failed=type mismatch or critical issues`;
+    }
 
     const response = await llm.invoke(prompt + "\n\nProvide your response as valid JSON only, with no additional text.");
 
@@ -573,14 +672,15 @@ Return your response now:`;
     console.log('Issues count:', validationResult.issues?.length || 0);
 
     // Only update contract status if we have a contract ID (not for uploaded files)
+    const validationMode = state.useGlobalClauses ? "global clauses" : "proposal";
     if (state.contractId) {
       const newStatus = validationResult.status === "compliant" ? "validated" :
                         validationResult.status === "issues_found" ? "pending" : "draft";
 
       await storage.updateContract(state.contractId, { status: newStatus });
-      console.log(`Contract ${state.contractId} validated: ${validationResult.status} (RAG: ${state.useRag})`);
+      console.log(`Contract ${state.contractId} validated: ${validationResult.status} (mode: ${validationMode}, RAG: ${state.useRag})`);
     } else {
-      console.log(`Uploaded file validated: ${validationResult.status} (RAG: ${state.useRag})`);
+      console.log(`Uploaded file validated: ${validationResult.status} (mode: ${validationMode}, RAG: ${state.useRag})`);
     }
 
     return {
@@ -588,10 +688,22 @@ Return your response now:`;
       step: "complete",
       error: null,
     };
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error in validateContract:", error);
+
+    // Provide clearer error messages for common issues
+    let errorMessage = "Failed to validate contract";
+
+    if (error?.message?.includes("fetch failed") || error?.cause?.code === "ECONNREFUSED") {
+      errorMessage = `LLM service unavailable. Please ensure ${LLM_PROVIDER === "ollama" ? "Ollama is running (ollama serve)" : "Gemini API is configured correctly"}.`;
+    } else if (error?.message?.includes("context length") || error?.message?.includes("too long")) {
+      errorMessage = "Contract is too large for validation. Please try a smaller document.";
+    } else if (error instanceof Error) {
+      errorMessage = error.message;
+    }
+
     return {
-      error: error instanceof Error ? error.message : "Failed to validate contract",
+      error: errorMessage,
       step: "error",
     };
   }
