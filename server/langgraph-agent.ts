@@ -1,11 +1,20 @@
 import { StateGraph, END, START, Annotation } from "@langchain/langgraph";
 import { ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings } from "@langchain/google-genai";
 import { ChatOllama, OllamaEmbeddings } from "@langchain/ollama";
+import { Ollama } from "ollama";
 import { storage } from "./storage";
 import { searchTemplatesByEmbedding, checkSupabaseAvailability } from "./supabase";
 
 // Configuration: Switch between "ollama" and "gemini"
 const LLM_PROVIDER = process.env.LLM_PROVIDER || "ollama";
+
+// Ollama configuration
+const ollamaBaseUrl = process.env.OLLAMA_BASE_URL || "http://localhost:11434";
+const ollamaModel = process.env.OLLAMA_MODEL || "llama3.2:3b";
+const ollamaEmbeddingModel = process.env.OLLAMA_EMBEDDING_MODEL || "nomic-embed-text";
+
+// Direct Ollama client for validation (bypasses LangChain timeout issues)
+let ollamaClient: Ollama | null = null;
 
 // Initialize models based on provider
 let llm: ChatGoogleGenerativeAI | ChatOllama;
@@ -13,19 +22,23 @@ let embeddings: GoogleGenerativeAIEmbeddings | OllamaEmbeddings;
 
 if (LLM_PROVIDER === "ollama") {
   console.log("🦙 Using Ollama (Local LLM) - Completely Free!");
-  const ollamaBaseUrl = process.env.OLLAMA_BASE_URL || "http://localhost:11434";
-  const ollamaModel = process.env.OLLAMA_MODEL || "llama3.1:8b";
-  const ollamaEmbeddingModel = process.env.OLLAMA_EMBEDDING_MODEL || "nomic-embed-text";
+  console.log(`   Model: ${ollamaModel}, Base URL: ${ollamaBaseUrl}`);
+
+  // Direct Ollama client with no timeout (for long-running validations)
+  ollamaClient = new Ollama({ host: ollamaBaseUrl });
 
   llm = new ChatOllama({
     baseUrl: ollamaBaseUrl,
     model: ollamaModel,
     temperature: 0.7,
+    numCtx: 4096,
+    keepAlive: "5m",
   });
 
   embeddings = new OllamaEmbeddings({
     baseUrl: ollamaBaseUrl,
     model: ollamaEmbeddingModel,
+    keepAlive: "5m",
   });
 } else if (LLM_PROVIDER === "gemini") {
   console.log("🌟 Using Google Gemini");
@@ -403,6 +416,50 @@ async function fetchGlobalClauses(): Promise<string> {
   return limitedClauses;
 }
 
+// RAG-based retrieval of relevant clauses (optimized for Ollama - smaller context)
+async function fetchRelevantGlobalClauses(contractContent: string): Promise<string> {
+  // For Ollama, use RAG to get only relevant clauses (much smaller context)
+  if (checkSupabaseAvailability()) {
+    try {
+      // Get embedding for contract's key sections
+      const contractSummary = contractContent.substring(0, 1500);
+      const embeddingResult = await safeEmbedQuery(contractSummary);
+
+      if (embeddingResult.success && embeddingResult.embedding) {
+        // Search for similar templates in vector DB
+        const searchResult = await searchTemplatesByEmbedding(embeddingResult.embedding, 0.3, 2);
+
+        if (searchResult.success && searchResult.data.length > 0) {
+          // Extract only the most relevant clauses (very limited for Ollama)
+          const relevantClauses = searchResult.data.map((t: any) => {
+            const content = t.content || t.chunk_text || "";
+            // Extract just essential clauses, limit to 800 chars per template
+            const essentialClauses = extractKeyClauses(content).substring(0, 800);
+            return `[${t.title || 'Template'}]: ${essentialClauses}`;
+          }).join("\n\n");
+
+          console.log(`RAG: Found ${searchResult.data.length} relevant templates (${relevantClauses.length} chars)`);
+          return relevantClauses.substring(0, 2000); // Max 2000 chars for Ollama
+        }
+      }
+    } catch (error) {
+      console.warn("RAG retrieval failed, falling back to basic clauses:", error);
+    }
+  }
+
+  // Fallback: Get minimal clauses from local templates
+  const templates = await storage.getTemplates();
+  if (templates.length === 0) {
+    return "";
+  }
+
+  // For Ollama, only use 1 template with minimal content
+  const topTemplate = templates[0];
+  const minimalClauses = extractKeyClauses(topTemplate.content).substring(0, 1500);
+  console.log(`Fallback: Using minimal clauses from ${topTemplate.title} (${minimalClauses.length} chars)`);
+  return minimalClauses;
+}
+
 async function retrieveContractAndContext(
   state: typeof ValidationState.State
 ): Promise<Partial<typeof ValidationState.State>> {
@@ -417,7 +474,13 @@ async function retrieveContractAndContext(
       let globalClausesContent = "";
       if (state.useGlobalClauses) {
         console.log("No proposal provided - fetching global clauses from templates");
-        globalClausesContent = await fetchGlobalClauses();
+        // Use RAG-based retrieval for Ollama (smaller context), full clauses for Gemini
+        if (LLM_PROVIDER === "ollama") {
+          console.log("Using RAG-optimized clause retrieval for Ollama");
+          globalClausesContent = await fetchRelevantGlobalClauses(state.contractContent);
+        } else {
+          globalClausesContent = await fetchGlobalClauses();
+        }
         if (!globalClausesContent) {
           return {
             error: "No templates available to use as global clauses. Please upload templates first.",
@@ -510,7 +573,13 @@ async function retrieveContractAndContext(
     let globalClausesContent = "";
     if (state.useGlobalClauses) {
       console.log("No proposal provided - fetching global clauses from templates");
-      globalClausesContent = await fetchGlobalClauses();
+      // Use RAG-based retrieval for Ollama (smaller context), full clauses for Gemini
+      if (LLM_PROVIDER === "ollama") {
+        console.log("Using RAG-optimized clause retrieval for Ollama");
+        globalClausesContent = await fetchRelevantGlobalClauses(contract.content);
+      } else {
+        globalClausesContent = await fetchGlobalClauses();
+      }
       if (!globalClausesContent) {
         return {
           error: "No templates available to use as global clauses. Please upload templates first.",
@@ -599,14 +668,23 @@ async function validateContract(
   state: typeof ValidationState.State
 ): Promise<Partial<typeof ValidationState.State>> {
   try {
+    const isOllama = LLM_PROVIDER === "ollama";
+
+    // Use smaller limits for Ollama to fit in context window
+    const maxContractLength = isOllama ? 4000 : 15000;
+    const maxClausesLength = isOllama ? 2000 : 8000;
+    const maxProposalLength = isOllama ? 2000 : 5000;
+
     const ragInfo = state.useRag && state.relevantContext.length > 0
-      ? `\n(${state.relevantContext.length} similar templates analyzed via RAG)`
+      ? `\n(${state.relevantContext.length} similar templates analyzed)`
       : "";
 
-    // Limit contract content to avoid token overflow (keep ~15000 chars max)
-    const contractContent = state.contractContent.length > 15000
-      ? state.contractContent.substring(0, 15000) + "\n...[content truncated]..."
+    // Limit contract content based on provider
+    const contractContent = state.contractContent.length > maxContractLength
+      ? state.contractContent.substring(0, maxContractLength) + "\n...[truncated]..."
       : state.contractContent;
+
+    console.log(`Validation context: contract=${contractContent.length} chars, provider=${LLM_PROVIDER}`);
 
     // Build different prompts based on whether we're using global clauses or proposal
     let prompt: string;
@@ -614,13 +692,30 @@ async function validateContract(
     if (state.useGlobalClauses && state.globalClausesContent) {
       // Global clauses validation mode - validate against stored template standards
       console.log("Using global clauses validation mode");
-      prompt = `You are a legal contract validator. Validate the contract against standard legal requirements.
+      const globalClausesText = state.globalClausesContent.length > maxClausesLength
+        ? state.globalClausesContent.substring(0, maxClausesLength) + "\n...[truncated]..."
+        : state.globalClausesContent;
+
+      // Use concise prompt for Ollama
+      if (isOllama) {
+        prompt = `Validate this contract against legal standards. Return JSON only.
+
+CONTRACT:
+${contractContent}
+
+REFERENCE:
+${globalClausesText}
+
+Check: essential clauses, clarity, structure, risks.
+JSON format: {"status":"compliant|issues_found|failed","summary":"brief","issues":[{"type":"error|warning","section":"name","message":"issue"}]}`;
+      } else {
+        prompt = `You are a legal contract validator. Validate the contract against standard legal requirements.
 
 CONTRACT:
 ${contractContent}
 
 REFERENCE CLAUSES:
-${state.globalClausesContent}
+${globalClausesText}
 ${ragInfo}
 
 VALIDATE FOR:
@@ -633,12 +728,30 @@ OUTPUT JSON only:
 {"status": "compliant|issues_found|failed", "summary": "2-3 sentences", "issues": [{"type": "error|warning|info", "section": "...", "message": "..."}]}
 
 STATUS: compliant=all essential clauses present, issues_found=some missing/weak clauses, failed=critical deficiencies`;
+      }
     } else {
       // Standard validation mode - validate against business proposal
-      prompt = `You are a legal contract validator. Validate the contract against business proposal requirements.
+      const proposalText = state.proposalText && state.proposalText.length > maxProposalLength
+        ? state.proposalText.substring(0, maxProposalLength) + "\n...[truncated]..."
+        : state.proposalText || "No proposal provided";
+
+      // Use concise prompt for Ollama
+      if (isOllama) {
+        prompt = `Validate contract against proposal. Return JSON only.
 
 PROPOSAL:
-${state.proposalText}
+${proposalText}
+
+CONTRACT:
+${contractContent}
+
+Check: type match, requirements met, completeness.
+JSON format: {"status":"compliant|issues_found|failed","summary":"brief","issues":[{"type":"error|warning","section":"name","message":"issue"}]}`;
+      } else {
+        prompt = `You are a legal contract validator. Validate the contract against business proposal requirements.
+
+PROPOSAL:
+${proposalText}
 
 CONTRACT:
 ${contractContent}
@@ -653,11 +766,29 @@ OUTPUT JSON only:
 {"status": "compliant|issues_found|failed", "summary": "2-3 sentences", "issues": [{"type": "error|warning|info", "section": "...", "message": "..."}]}
 
 STATUS: compliant=requirements met, issues_found=some issues, failed=type mismatch or critical issues`;
+      }
     }
 
-    const response = await llm.invoke(prompt + "\n\nProvide your response as valid JSON only, with no additional text.");
+    const fullPrompt = prompt + "\n\nProvide your response as valid JSON only, with no additional text.";
+    let responseText: string;
 
-    const responseText = response.content.toString();
+    // Use direct Ollama client for validation (better timeout handling)
+    if (LLM_PROVIDER === "ollama" && ollamaClient) {
+      console.log('Using direct Ollama API for validation...');
+      const ollamaResponse = await ollamaClient.chat({
+        model: ollamaModel,
+        messages: [{ role: "user", content: fullPrompt }],
+        options: {
+          num_ctx: 4096,
+          temperature: 0.7,
+        },
+      });
+      responseText = ollamaResponse.message.content;
+    } else {
+      const response = await llm.invoke(fullPrompt);
+      responseText = response.content.toString();
+    }
+
     console.log('Validation LLM response length:', responseText.length);
     
     // Extract JSON from response (Gemini sometimes wraps it in markdown)
@@ -694,8 +825,10 @@ STATUS: compliant=requirements met, issues_found=some issues, failed=type mismat
     // Provide clearer error messages for common issues
     let errorMessage = "Failed to validate contract";
 
-    if (error?.message?.includes("fetch failed") || error?.cause?.code === "ECONNREFUSED") {
-      errorMessage = `LLM service unavailable. Please ensure ${LLM_PROVIDER === "ollama" ? "Ollama is running (ollama serve)" : "Gemini API is configured correctly"}.`;
+    if (error?.message?.includes("fetch failed") || error?.cause?.code === "ECONNREFUSED" || error?.cause?.code === "UND_ERR_SOCKET") {
+      errorMessage = LLM_PROVIDER === "ollama"
+        ? "Ollama connection failed. This may be due to: 1) Ollama not running (run 'ollama serve'), 2) Model not loaded (run 'ollama pull llama3.1:8b'), or 3) Request too large - try a smaller document."
+        : "Gemini API connection failed. Please check your API key configuration.";
     } else if (error?.message?.includes("context length") || error?.message?.includes("too long")) {
       errorMessage = "Contract is too large for validation. Please try a smaller document.";
     } else if (error instanceof Error) {
