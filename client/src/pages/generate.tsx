@@ -145,7 +145,7 @@ export default function Generate() {
       {currentStep === "proposal" && (
         <Card>
           <CardHeader>
-            <CardTitle>Business Proposal Details</CardTitle>
+            <CardTitle>Business Proposal/Requirement Details</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
@@ -179,7 +179,7 @@ export default function Generate() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="proposal">Business Proposal</Label>
+              <Label htmlFor="proposal">Business Proposal/Requirement</Label>
               <Textarea
                 id="proposal"
                 placeholder="Describe the business requirements, terms, conditions, and specific clauses for this contract. The AI will use semantic search to find the most relevant templates from your library and generate a customized contract based on your requirements."

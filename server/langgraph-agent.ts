@@ -9,8 +9,8 @@ import { searchTemplatesByEmbedding, checkSupabaseAvailability } from "./supabas
 const LLM_PROVIDER = process.env.LLM_PROVIDER || "ollama";
 
 // Ollama configuration
-const ollamaBaseUrl = process.env.OLLAMA_BASE_URL || "http://localhost:11434";
-const ollamaModel = process.env.OLLAMA_MODEL || "llama3.2:3b";
+const ollamaBaseUrl = process.env.OLLAMA_BASE_URL || "http://127.0.0.1:11434";
+const ollamaModel = process.env.OLLAMA_MODEL || "llama3.1:8b";
 const ollamaEmbeddingModel = process.env.OLLAMA_EMBEDDING_MODEL || "nomic-embed-text";
 
 // Direct Ollama client for validation (bypasses LangChain timeout issues)
